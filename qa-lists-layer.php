@@ -72,7 +72,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 	//		if(qa_get_site_theme() == "Donut")
 				$listarray = array();
 				$userid = qa_get_logged_in_userid();
-				$query = "select distinct  listid, listname from ^userlists order by listid";
+				$query = "select distinct  listid as listid, listname from ^userlists order by listid";
 				$result = qa_db_query_sub($query);
 				$result = qa_db_read_all_assoc($result);
 				if(true)
@@ -84,7 +84,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 						<span class="caret"></span></button>
 						<ul class="dropdown-menu">');*/
 				$query = $_GET;
-				$selected = $query['listid'];
+				$selected = @$query['listid'];
 				$url = strtok(qa_self_html(), '?');
 				for($i = 0; $i < count($result); $i++)
 				{
@@ -183,7 +183,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 					<input type="button" class="qa-gray-button qa-go-list-send-button" value="'.qa_lang('q2apro_flagreasons_lang/send').'">
 
 					<div class="closer">×</div>
-					</div>
+					</div> </div></div>
 					');
 		}
 

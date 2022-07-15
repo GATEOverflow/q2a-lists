@@ -47,7 +47,7 @@ class qa_lists_ajax_page
 			//$listids = implode(",", $listids);
 
 			$ajaxreturn = '';
-			if(empty($questionid) || empty($listids))
+			if(empty($questionid))
 			{
 				$reply = array( 'error' => "Data missing, received data is ".$newdata );
 				echo json_encode($reply );

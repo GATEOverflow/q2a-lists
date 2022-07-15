@@ -20,7 +20,8 @@ function qa_lists_id_to_name($listid, $userid)
 
 function qa_lists_savelist($userid, $listids, $postid)
 {
-	if(!$listids || !$postid) return false;
+	//if(!$listids || !$postid) return false;
+	if(!$postid) return false;
 	for($i = 0; $i <= 6; $i++)
 	{
 		//foreach($listids as $listid)

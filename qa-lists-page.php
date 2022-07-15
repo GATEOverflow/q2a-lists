@@ -58,7 +58,7 @@
             } else
                 $userhtml = qa_html( $handle );
 
-//            qa_set_template( 'questions' );
+             qa_set_template( 'user-list' );
 
             return require dirname( __FILE__ ) . '/qa-lists.php';
             //return require QA_EXAM_DIR . '/pages/exams.php';
