@@ -36,7 +36,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 
 			$this->output('
 					<script type="text/javascript" src="'.QA_HTML_THEME_LAYER_URLTOROOT.'script.js?v=0.00192"></script>
-					<link rel="stylesheet" type="text/css" href="'.QA_HTML_THEME_LAYER_URLTOROOT.'styles.css?v=0.0001">
+					<link rel="stylesheet" type="text/css" href="'.QA_HTML_THEME_LAYER_URLTOROOT.'styles.css?v=0.0002">
 					');
 		}
 		}
@@ -131,7 +131,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 		qa_html_theme_base::q_view_buttons($q_view);
 
 	}
-	public function body_hidden()
+	public function q_view_main($q_view)
 	{
 		if(qa_is_logged_in() && $this->template=="question")
 		{
@@ -188,7 +188,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 		}
 
 		// default method call outputs the form buttons
-		qa_html_theme_base::body_hidden();
+		qa_html_theme_base::q_view_main($q_view);
 	} // END function body_hidden()
 
 

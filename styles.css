@@ -50,9 +50,6 @@ input[name="qa-lists-radio"]:checked+span { font-weight: bold; }
 	background: rgba(0,0,0,0.75);
 	height: 100%;
 	width: 100%;
-	position: fixed;
-	top: 0;
-	left: 0;
 	display: none;
 	z-index: 5119;
 }
