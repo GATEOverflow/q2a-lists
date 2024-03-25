@@ -40,7 +40,7 @@ class qa_lists_ajax_page
 		if(!empty($transferString)) 
 		{
 			$newdata = json_decode($transferString, true);
-			$newdata = str_replace('&quot;', '"', $newdata); // see stackoverflow.com/questions/3110487/
+			//$newdata = str_replace('&quot;', '"', $newdata); // see stackoverflow.com/questions/3110487/
 
 			$questionid = (int)$newdata['questionid'];
 			$listids = $newdata['list'];
