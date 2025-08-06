@@ -75,6 +75,8 @@ class qa_html_theme_layer extends qa_html_theme_base {
 				$query = "select distinct  listid as listid, listname from ^userlists order by listid";
 				$result = qa_db_query_sub($query);
 				$result = qa_db_read_all_assoc($result);
+				//$result[] = ['listid' => 0, 'listname' => 'Favourites']; // to add Favourites at the end
+				array_unshift($result, ['listid' => 0, 'listname' => 'Favourites']);
 				if(true)
 				{
 					
