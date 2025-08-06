@@ -41,8 +41,6 @@ switch ($sort) {
 $selectspec =  qa_db_qs_mod_selectspec($userid, $selectsort, $start, $categoryslugs, null, false, false, qa_opt_if_loaded('page_size_qs'), $listid);
 $query = "select questionids from ^userlists where userid = # and listid = #";
 $result = qa_db_query_sub($query, $userid, $listid);
-// $query = "select entityid from ^userfavorites where userid=# and entitytype = $";
-	// $result = qa_db_query_sub($query, $userid, 'Q');
 $tcount = qa_db_read_one_value($result, true);
 if(!$tcount) $tcount = 0;
 else $tcount = count(explode(",", $tcount));
