@@ -22,7 +22,7 @@ function qa_lists_savelist($userid, $listids, $postid)
 {
 	//if(!$listids || !$postid) return false;
 	if(!$postid) return false;
-	for($i = 0; $i <= 6; $i++)
+	for($i = 0; $i < 6; $i++)	// there are six list except the favorite
 	{
 		//foreach($listids as $listid)
 		//{
@@ -50,7 +50,7 @@ function qa_lists_savelist($userid, $listids, $postid)
 		else if(in_array($listid, $listids))
 			$questions = $postid;
 		else $questions = '';
-		$listname = qa_lists_id_to_name($listid, $userid);
+		$listname = qa_lists_id_to_name($listid, $userid);	//userid not required
 		$query = "insert into ^userlists(userid, listid, listname, questionids) values (#,#,$,$) on duplicate key update questionids = $";
 		$result = qa_db_query_sub($query,   $userid,$listid, $listname, $questions, $questions);
 		$query = "insert into ^userquestionlists(userid, questionid, listids) values (#,#,$) on duplicate key update listids = $";
@@ -59,7 +59,7 @@ function qa_lists_savelist($userid, $listids, $postid)
 
 	}
 }
-function qa_lists_save_questions($userid, $list_id, $postids)
+function qa_lists_save_questions($userid, $list_id, $postids)	//function defined but not used anywhere in the plugin.
 {
 	$postids = explode(",", trim($postids));
 	foreach($postids as $postid)
@@ -84,6 +84,8 @@ function qa_lists_save_questions($userid, $list_id, $postids)
 	$listname = qa_lists_id_to_name($list_id, $userid);
 	$query = "select questionids from ^userlists where userid=# and listid = #";
 	$result = qa_db_query_sub($query, $userid, $list_id);
+	// $query = "select entityid from ^userfavorites where userid=# and entitytype = $";
+	// $result = qa_db_query_sub($query, $userid, 'Q');
 	$questionids = qa_db_read_one_value($result, true);
 	//if(count(@$questionids) > 0)
 	if($questionids) 

@@ -14,7 +14,7 @@ $sort = ($countslugs && !QA_ALLOW_UNINDEXED_QUERIES) ? null : qa_get('sort');
 $start = qa_get_start();
 $userid = qa_get_logged_in_userid();
 $listid = qa_get('listid');
-if($listid == NULL) $listid = 1;
+if($listid == NULL) $listid = 0;
 // Get list of questions, plus category information
 
 switch ($sort) {
@@ -202,9 +202,19 @@ function qa_db_qs_mod_selectspec($voteuserid, $sort, $start, $categoryslugs = nu
         }
 
         $selectspec = qa_db_posts_basic_selectspec($voteuserid, $full);
-$query = "select questionids from ^userlists where userid=# and listid = #";
+		if($listid!=0){
+		$query = "select questionids from ^userlists where userid=# and listid = #";
         $result = qa_db_query_sub($query, $voteuserid, $listid);
-        $questions = qa_db_read_one_value($result, true);
+		$questions = qa_db_read_one_value($result, true);
+		}
+		else{
+			$query = "select entityid from ^userfavorites where userid=# and entitytype = $";
+			$result = qa_db_query_sub($query, $voteuserid, 'Q');
+			$rows = qa_db_read_all_assoc($result);
+			$favorite_questionids = array_column($rows, 'entityid');
+			$questions = implode(',', $favorite_questionids);
+		}
+        
 if(!$questions) $questions = "''";
 $selectspec['source'] .= " JOIN (select postid from ^posts where postid in ($questions))aby on aby.postid=^posts.postid";
         $selectspec['source'] .=
