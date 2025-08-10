@@ -66,15 +66,6 @@ $(document).ready(function()
 						alert(data);
 						
 					}
-					// Check if list 0 was added (favorite)
-					if (addList.includes("0")) {
-						document.querySelector(`button[name="favorite_Q_${listsQuestionid}_1"]`)?.click();
-					}
-
-					// Check if list 0 was removed (unfavorite)
-					if (removeList.includes("0")) {
-						document.querySelector(`button[name="favorite_Q_${listsQuestionid}_0"]`)?.click();
-					}
 				 },
 				 error: function(data)
 				 {

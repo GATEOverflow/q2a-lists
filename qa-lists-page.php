@@ -41,7 +41,7 @@
         public function process_request( $request )
         {
             $handle = qa_request_part( 1 );
-			error_log($handle);
+			//error_log($handle);
 
             if ( !strlen( $handle ) ) {
                 $handle = qa_get_logged_in_handle();
