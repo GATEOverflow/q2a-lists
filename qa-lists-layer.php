@@ -72,11 +72,21 @@ class qa_html_theme_layer extends qa_html_theme_base {
 	//		if(qa_get_site_theme() == "Donut")
 				$listarray = array();
 				$userid = qa_get_logged_in_userid();
-				$query = "select distinct  listid as listid, listname from ^userlists order by listid";
-				$result = qa_db_query_sub($query);
-				$result = qa_db_read_all_assoc($result);
-				//$result[] = ['listid' => 0, 'listname' => 'Favourites']; // to add Favourites at the end
-				array_unshift($result, ['listid' => 0, 'listname' => 'Favourites']);
+				
+				// Get list count from options
+				$list_count = (int) qa_opt('qa-lists-count');
+
+				// Prepare result array
+				$lists = array();
+
+				// Loop from 0 to $list_count
+				for ($i = 0; $i <= $list_count; $i++) {
+					$list_name = qa_opt('qa-lists-id-name' . $i);
+					$lists[] = array(
+						'listid'   => $i,
+						'listname' => $list_name
+					);
+				}
 				if(true)
 				{
 					
@@ -88,17 +98,17 @@ class qa_html_theme_layer extends qa_html_theme_base {
 				$query = $_GET;
 				$selected = @$query['listid'];
 				$url = strtok(qa_self_html(), '?');
-				for($i = 0; $i < count($result); $i++)
+				for($i = 0; $i <= $list_count; $i++)
 				{
-					$query['listid'] = $result[$i]['listid'];
+					$query['listid'] = $lists[$i]['listid'];
 					$queryval = http_build_query($query);
 					$clist = array(
-						'label' => $result[$i]['listname'],
+						'label' => $lists[$i]['listname'],
 						'url' => $url.'?'.$queryval,
-						'selected' => ($result[$i]['listid'] == $selected)
+						'selected' => ($lists[$i]['listid'] == $selected)
 					);
 					$listarray [] = $clist;
-		//			$this-> output('<li><a href="'.$url.'?'.$queryval.'">'.$result[$i]['listname'].'</a></li>');
+		//			$this-> output('<li><a href="'.$url.'?'.$queryval.'">'.$lists[$i]['listname'].'</a></li>');
 				}
 				if(!$selected) $listarray[0]['selected'] = true;
 		/*		$this->output('</ul>
@@ -144,49 +154,29 @@ class qa_html_theme_layer extends qa_html_theme_base {
 			$result = qa_db_query_sub($query, $userid, $postid);
 			$listids = qa_db_read_one_value($result, true);
 			$lists = explode(",", $listids);
-			if(in_array("1", $lists)) $c1 = " checked"; else $c1 = '';
-			if(in_array("2", $lists)) $c2 = " checked"; else $c2 = '';
-			if(in_array("3", $lists)) $c3 = " checked"; else $c3 = '';
-			if(in_array("4", $lists)) $c4 = " checked"; else $c4 = '';
-			if(in_array("5", $lists)) $c5 = " checked"; else $c5 = '';
-			if(in_array("6", $lists)) $c6 = " checked"; else $c6 = '';
+			$list_count = (int) qa_opt('qa-lists-count'); // total number of lists
+
+			$this->output('<div id="qa-lists-popup">
+				<div id="qa-lists-center">
+				<div class="qa-lists-wrap">
+				<h4>' . qa_lang('lists_lang/listnames') . '</h4>');
+				
+			for ($i = 0; $i <= $list_count; $i++) { 
+				$checked = in_array((string)$i, $lists) ? ' checked' : '';
+				$this->output('
+					<label>
+						<input type="checkbox" name="qa-lists-check" value="' . $i . '"' . $checked . '>
+						<span>' . qa_lists_id_to_name($i, $userid) . '</span>
+					</label>'
+				);
+			}
+
 			$this->output('
-					<div id="qa-lists-popup">
-					<div id="qa-lists-center">
-					<div class="qa-lists-wrap">
-					<h4>
-					'.qa_lang('lists_lang/listnames').'
-					</h4>
-					<label>
-					<input type="checkbox" name="qa-lists-check" value="1" '. $c1. ' >
-					<span>'.qa_lists_id_to_name(1, $userid).'</span>
-					</label>
-					<label>
-					<input type="checkbox" name="qa-lists-check" value="2" '. $c2. ' >
-					<span>'.qa_lists_id_to_name(2, $userid).'</span>
-					</label>
-					<label>
-					<input type="checkbox" name="qa-lists-check" value="3" '. $c3. ' >
-					<span>'.qa_lists_id_to_name(3, $userid).'</span>
-					</label>
-					<label>
-					<input type="checkbox" name="qa-lists-check" value="4" '. $c4 .' >
-					<span>'.qa_lists_id_to_name(4, $userid).'</span>
-					</label>
-					<label>
-					<input type="checkbox" name="qa-lists-check" value="5" '. $c5 .' >
-					<span>'.qa_lists_id_to_name(5, $userid).'</span>
-					</label>
-					<label>
-					<input type="checkbox" name="qa-lists-check" value="6" '. $c6 .' >
-					<span>'.qa_lists_id_to_name(6, $userid).'</span>
-					</label>
-
-					<input type="button" class="qa-gray-button qa-go-list-send-button" value="'.qa_lang('q2apro_flagreasons_lang/send').'">
-
-					<div class="closer">×</div>
-					</div> </div></div>
-					');
+				<input type="button" class="qa-gray-button qa-go-list-send-button" value="' . qa_lang('q2apro_flagreasons_lang/send') . '">
+				<div class="closer">×</div>
+				</div>
+				</div>
+				</div>');
 		}
 
 		// default method call outputs the form buttons

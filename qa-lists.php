@@ -202,21 +202,11 @@ function qa_db_qs_mod_selectspec($voteuserid, $sort, $start, $categoryslugs = nu
         }
 
         $selectspec = qa_db_posts_basic_selectspec($voteuserid, $full);
-		if($listid!=0){
 		$query = "select questionids from ^userlists where userid=# and listid = #";
         $result = qa_db_query_sub($query, $voteuserid, $listid);
 		$questions = qa_db_read_one_value($result, true);
-		}
-		else{
-			$query = "select entityid from ^userfavorites where userid=# and entitytype = $";
-			$result = qa_db_query_sub($query, $voteuserid, 'Q');
-			$rows = qa_db_read_all_assoc($result);
-			$favorite_questionids = array_column($rows, 'entityid');
-			$questions = implode(',', $favorite_questionids);
-		}
-        
-if(!$questions) $questions = "''";
-$selectspec['source'] .= " JOIN (select postid from ^posts where postid in ($questions))aby on aby.postid=^posts.postid";
+		if(!$questions) $questions = "''";
+		$selectspec['source'] .= " JOIN (select postid from ^posts where postid in ($questions))aby on aby.postid=^posts.postid";
         $selectspec['source'] .=
                 " JOIN (SELECT postid FROM ^posts WHERE " .
                 qa_db_categoryslugs_sql_args($categoryslugs, $selectspec['arguments']) .
