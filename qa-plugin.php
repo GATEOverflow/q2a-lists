@@ -11,54 +11,116 @@ qa_register_plugin_module('page', 'qa-lists-page.php', 'qa_lists_page', 'Questio
 qa_register_plugin_module('page', 'qa-lists-ajax-page.php', 'qa_lists_ajax_page', 'Question Lists AJAX Page');
 qa_register_plugin_layer('qa-lists-layer.php', 'Question Lists Layer');
 qa_register_plugin_overrides('qa-lists-overrides.php', 'Question Lists Override');
-qa_register_plugin_phrases('qa-lists-lang-*.php', 'lists_lang');    
+qa_register_plugin_phrases('qa-lists-lang-*.php', 'lists_lang');
+qa_register_plugin_module('event', 'qa-favoritelist.php', 'my_favorite_event', 'My Favorite Event');
+    
 
 function qa_lists_id_to_name($listid, $userid)
 {
 	return qa_opt("qa-lists-id-name".$listid);
 }
 
-function qa_lists_savelist($userid, $listids, $postid)
+function qa_lists_savelist($userid, $postid, $addlistids = [], $removelistids = [])
 {
-	//if(!$listids || !$postid) return false;
-	if(!$postid) return false;
-	for($i = 0; $i < 6; $i++)	// there are six list except the favorite
-	{
-		//foreach($listids as $listid)
-		//{
-		$listid = $i+1;
-		$query = "select questionids from ^userlists where userid=# and listid = #";
-		$result = qa_db_query_sub($query, $userid, $listid);
-		$questionids = qa_db_read_one_value($result, true);
-		if(($questionids !== NULL) && (trim($questionids) !== ''))
-		{
-			//	file_put_contents("/tmp/outp.txt", $questionids."\t".$postid."\n", FILE_APPEND);
-			$questions = explode(",", trim($questionids));
-			if(!in_array($postid, $questions) && in_array($listid, $listids))
-			{
-				$questions[] = $postid;
-			}
-			else if(in_array($postid, $questions) && !in_array($listid, $listids))
-			{
-				$pos = array_search($postid, $questions);
-				unset($questions[$pos]);
-				//$questions = array_splice($questions, array_search($postid, $questions), 1);
-			}
+    if (!$postid) {
+        return false;
+    }
 
-			$questions = trim(implode(",", array_filter($questions)));
-		}
-		else if(in_array($listid, $listids))
-			$questions = $postid;
-		else $questions = '';
-		$listname = qa_lists_id_to_name($listid, $userid);	//userid not required
-		$query = "insert into ^userlists(userid, listid, listname, questionids) values (#,#,$,$) on duplicate key update questionids = $";
-		$result = qa_db_query_sub($query,   $userid,$listid, $listname, $questions, $questions);
-		$query = "insert into ^userquestionlists(userid, questionid, listids) values (#,#,$) on duplicate key update listids = $";
-		$mylistids = implode(",", array_filter($listids));
-		$result = qa_db_query_sub($query, $userid,$postid, $mylistids,$mylistids);
+    //Handle adding post to lists
+    foreach ($addlistids as $listid) {
+        $listid = (int) $listid;
 
+        // Fetch existing question IDs for this list
+        $result = qa_db_query_sub(
+            "SELECT questionids FROM ^userlists WHERE userid = # AND listid = #",
+            $userid, $listid
+        );
+        $questionids = qa_db_read_one_value($result, true);
+
+        if ($questionids !== null && trim($questionids) !== '') {
+            $questions = explode(",", trim($questionids));
+            if (!in_array($postid, $questions)) {
+                $questions[] = $postid;
+            }
+        } else {
+            $questions = [$postid];
+        }
+
+        // Save back to userlists
+        $questionsStr = trim(implode(",", array_filter($questions)));
+        $listname = qa_lists_id_to_name($listid, $userid);
+
+        qa_db_query_sub(
+            "INSERT INTO ^userlists (userid, listid, listname, questionids)
+             VALUES (#, #, $, $)
+             ON DUPLICATE KEY UPDATE questionids = $",
+            $userid, $listid, $listname, $questionsStr, $questionsStr
+        );
+    }
+
+    //Handle removing post from lists
+    foreach ($removelistids as $listid) {
+        $listid = (int) $listid;
+
+        // Remove from ^userlists
+        $result = qa_db_query_sub(
+            "SELECT questionids FROM ^userlists WHERE userid = # AND listid = #",
+            $userid, $listid
+        );
+        $questionids = qa_db_read_one_value($result, true);
+
+        if ($questionids !== null && trim($questionids) !== '') {
+            $questions = explode(",", trim($questionids));
+            if (in_array($postid, $questions)) {
+                unset($questions[array_search($postid, $questions)]);
+            }
+
+            $questionsStr = trim(implode(",", array_filter($questions)));
+
+                qa_db_query_sub(
+                    "UPDATE ^userlists SET questionids = $ WHERE userid = # AND listid = #",
+                    $questionsStr, $userid, $listid
+                );
+        }
+    }
+	
+	//Update ^userquestionlists with all lists this question now belongs to
+	$query = "SELECT listid 
+		FROM ^userlists 
+		WHERE userid = # 
+		  AND FIND_IN_SET(#, questionids)
+	";
+	$result = qa_db_query_sub($query, $userid, $postid);
+
+	$currentLists = [];
+	$rows = qa_db_read_all_assoc($result);
+
+	foreach ($rows as $row) {
+		$currentLists[] = $row['listid'];
 	}
+
+    $mylistids = implode(",", $currentLists);
+
+	if (strlen($mylistids) === 0) {
+		// No lists left → remove record
+		qa_db_query_sub(
+			"DELETE FROM ^userquestionlists
+			 WHERE userid = #
+			 AND questionid = #",
+			$userid, $postid
+		);
+	} else {
+		qa_db_query_sub(
+			"INSERT INTO ^userquestionlists (userid, questionid, listids)
+			 VALUES (#, #, $)
+			 ON DUPLICATE KEY UPDATE listids = $",
+			$userid, $postid, $mylistids, $mylistids
+		);
+	}
+	
+    return true;
 }
+
 function qa_lists_save_questions($userid, $list_id, $postids)	//function defined but not used anywhere in the plugin.
 {
 	$postids = explode(",", trim($postids));

@@ -43,8 +43,8 @@ class qa_lists_ajax_page
 			//$newdata = str_replace('&quot;', '"', $newdata); // see stackoverflow.com/questions/3110487/
 
 			$questionid = (int)$newdata['questionid'];
-			$listids = $newdata['list'];
-			//$listids = implode(",", $listids);
+			$addlistids = $newdata['addList'];
+			$removelistids = $newdata['removeList'];
 
 			$ajaxreturn = '';
 			if(empty($questionid))
@@ -63,7 +63,7 @@ class qa_lists_ajax_page
 
 
 
-			qa_lists_savelist($userid, $listids, $questionid);
+			qa_lists_savelist($userid,$questionid,$addlistids,$removelistids);
 
 			if($error)
 			{
