@@ -7,7 +7,8 @@ class qa_lists_admin {
                 return QA_USER_LEVEL_MODERATOR;
             case 'qa-lists-count':
                 return 5;
-            case 'qa-lists-id-name1': return 'Important';
+            case 'qa-lists-id-name0': return 'Favorites';
+			case 'qa-lists-id-name1': return 'Important';
             case 'qa-lists-id-name2': return 'Difficult';
             case 'qa-lists-id-name3': return 'See Later';
             case 'qa-lists-id-name4': return 'Wrongly Attempted';
@@ -57,7 +58,8 @@ class qa_lists_admin {
 		}
 	    // After creating tables, migrate favorites
 		if ($tablename1_created && $tablename2_created) {
-			$this->qa_lists_migrate_favorites_to_list();
+			$this->reset_favorites_list();
+			//error_log("checked");
 		}
 		return $queries;
 	} 
@@ -70,8 +72,8 @@ class qa_lists_admin {
 	public function reset_favorites_list()
 	{
 		// remove list 0 if exists
-		$remove_from_userlists = qa_db_query_sub("DELETE FROM `qa_userlists` WHERE listid=0"); 
-		$remove_from_userquestionlists = qa_db_query_sub("UPDATE qa_userquestionlists
+		$remove_from_userlists = qa_db_read_one_value(qa_db_query_sub('SHOW TABLES LIKE "qa_userlists"'), true) && qa_db_query_sub("DELETE FROM `qa_userlists` WHERE listid=0"); 
+		$remove_from_userquestionlists = qa_db_read_one_value(qa_db_query_sub('SHOW TABLES LIKE "qa_userquestionlists"'), true) && qa_db_query_sub("UPDATE qa_userquestionlists
 SET listids = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', listids, ','), ',0,', ','))
 WHERE listids LIKE '%0%'");
 
@@ -268,7 +270,7 @@ public function qa_lists_append_list($source_listid, $target_listid) {
                 'label' => 'List name ' . $i,
                 'type'  => 'static',
                 'tags'  => 'name="qa-lists-id-name' . $i . '"',
-                'value' => qa_opt('qa-lists-id-name' . $i),
+                'value' => qa_opt('qa-lists-id-name' . $i)? qa_opt('qa-lists-id-name' . $i): $this -> option_default('qa-lists-id-name' . $i),
 		);
         for ($i = 1; $i <= $list_count; $i++) {
             $fields[] = array(
