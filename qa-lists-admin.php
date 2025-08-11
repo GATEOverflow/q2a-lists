@@ -59,8 +59,7 @@ class qa_lists_admin {
 	    // After creating tables, migrate favorites
 		if ($tablename1_created && $tablename2_created) {
 			$this->reset_favorites_list();
-			error_log("checked");
-
+			//error_log("checked");
 		}
 		return $queries;
 	} 
