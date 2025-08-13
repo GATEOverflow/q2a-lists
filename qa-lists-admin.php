@@ -6,7 +6,7 @@ class qa_lists_admin {
             case 'qa_lists_level': 
                 return QA_USER_LEVEL_MODERATOR;
             case 'qa-lists-count':
-                return 5;
+                return 6;
             case 'qa-lists-id-name0': return 'Favorites';
 			case 'qa-lists-id-name1': return 'Important';
             case 'qa-lists-id-name2': return 'Difficult';
@@ -69,31 +69,66 @@ class qa_lists_admin {
 		return ($template!='admin');
 	}
 	
-	public function reset_favorites_list()
-	{
-		// remove list 0 if exists
-		$remove_from_userlists = qa_db_read_one_value(qa_db_query_sub('SHOW TABLES LIKE "qa_userlists"'), true) && qa_db_query_sub("DELETE FROM `qa_userlists` WHERE listid=0"); 
-		$remove_from_userquestionlists = qa_db_read_one_value(qa_db_query_sub('SHOW TABLES LIKE "qa_userquestionlists"'), true) && qa_db_query_sub("UPDATE qa_userquestionlists
-SET listids = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', listids, ','), ',0,', ','))
-WHERE listids LIKE '%0%'");
-
-		// Get all favorite questions from Q2A core
-		$favorites = qa_db_query_sub("
-			SELECT uf.userid, uf.entityid AS questionid
-			FROM ^userfavorites uf
+public function reset_favorites_list()
+{
+    // remove list 0 if exists
+	if (qa_db_read_one_value(
+			qa_db_query_sub('SHOW TABLES LIKE $', QA_MYSQL_TABLE_PREFIX . 'userlists'),
+			true
+		)) {
+			qa_db_query_sub("DELETE FROM ^userlists WHERE listid=0");
+		}
+	if (qa_db_read_one_value(
+			qa_db_query_sub('SHOW TABLES LIKE $', QA_MYSQL_TABLE_PREFIX . 'userquestionlists'),
+			true
+		)) {
+			qa_db_query_sub("
+				UPDATE ^userquestionlists
+				SET listids = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', listids, ','), ',0,', ','))
+				WHERE listids LIKE '%0%'
+			");
+		}
+		
+	   // STEP 1: Fix merged favorites (only if postmeta table exists)
+	if (qa_db_read_one_value(
+			qa_db_query_sub('SHOW TABLES LIKE $', QA_MYSQL_TABLE_PREFIX . 'postmeta'),
+			true
+		)) {
+		qa_db_query_sub("
+			UPDATE ^userfavorites uf
+			JOIN ^postmeta pm ON pm.post_id = uf.entityid
+			SET uf.entityid = pm.meta_value
 			WHERE uf.entitytype = 'Q'
 		");
-		$rows = qa_db_read_all_assoc($favorites);
-		foreach ($rows as $row) {	
-			qa_lists_savelist(
-				$row['userid'],
-				$row['questionid'],
-				array(0), // add to list 0
-				array()   // remove none
-			);
-		}
-
 	}
+
+
+    // STEP 2: Delete favorites where post no longer exists
+    qa_db_query_sub("
+        DELETE uf FROM ^userfavorites uf
+        LEFT JOIN ^posts p
+            ON p.postid = uf.entityid
+        WHERE p.postid IS NULL
+          AND uf.entitytype = 'Q'
+    ");
+
+    // STEP 3: Rebuild favorites into list 0
+    $favorites = qa_db_query_sub("
+        SELECT uf.userid, uf.entityid AS questionid
+        FROM ^userfavorites uf
+        WHERE uf.entitytype = 'Q'
+    ");
+    $rows = qa_db_read_all_assoc($favorites);
+    foreach ($rows as $row) {    
+        qa_lists_savelist(
+            $row['userid'],
+            $row['questionid'],
+            array(0), // add to list 0
+            array()   // remove none
+        );
+    }
+}
+
 
 public function qa_lists_append_list($source_listid, $target_listid) {
     if ($source_listid === $target_listid) {
