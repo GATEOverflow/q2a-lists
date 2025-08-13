@@ -186,7 +186,10 @@ function q2a_repair_question_favorites_mysql8(int $batchSize = 500): void
         if ($tablename1_created && $tablename2_created) {
             $this->reset_favorites_list();
             //error_log("checked");
-        }
+	}
+	if (!qa_opt('qa-lists-id-name0'))
+		qa_opt('qa-lists-id-name0', 'Favorites');
+
         return $queries;
     } 
 
