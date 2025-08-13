@@ -31,8 +31,6 @@ class my_favorite_event {
 			foreach ($oldRows as $oldRow) {
 				$userid = (int)$oldRow['userid'];
 				$listidsOfOld = $this->qa_lists_parse_listids($oldRow['listids']); // parse comma list to array
-				error_log(print_r($listidsOfOld, true));
-				error_log("++++".$userid);
 				// Get the NEW post's listids for this user
 				$newRow = qa_db_read_one_assoc(qa_db_query_sub(
 					"SELECT listids 
