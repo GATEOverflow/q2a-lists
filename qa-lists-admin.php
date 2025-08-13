@@ -94,12 +94,28 @@ public function reset_favorites_list()
 			qa_db_query_sub('SHOW TABLES LIKE $', QA_MYSQL_TABLE_PREFIX . 'postmeta'),
 			true
 		)) {
-		qa_db_query_sub("
-			UPDATE ^userfavorites uf
-			JOIN ^postmeta pm ON pm.post_id = uf.entityid
-			SET uf.entityid = pm.meta_value
-			WHERE uf.entitytype = 'Q' and pm.meta_key= 'merged_with'
-		");
+			
+			//Delete any rows from Favorites table where new postid and oldpostid are favorited by the same user.
+			qa_db_query_sub("
+				DELETE uf1 FROM ^userfavorites uf1
+				JOIN ^userfavorites uf2
+				  ON uf1.userid = uf2.userid
+				 AND uf1.entitytype = uf2.entitytype
+				 AND uf2.entityid = (
+					SELECT pm.meta_value
+					FROM ^postmeta pm
+					WHERE pm.post_id = uf1.entityid
+					  AND pm.meta_key = 'merged_with'
+					LIMIT 1
+				 )
+			");
+
+			qa_db_query_sub("
+				UPDATE ^userfavorites uf
+				JOIN ^postmeta pm ON pm.post_id = uf.entityid
+				SET uf.entityid = pm.meta_value
+				WHERE uf.entitytype = 'Q' and pm.meta_key= 'merged_with'
+			");
 	}
 
 
