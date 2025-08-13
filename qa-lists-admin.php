@@ -98,7 +98,7 @@ public function reset_favorites_list()
 			UPDATE ^userfavorites uf
 			JOIN ^postmeta pm ON pm.post_id = uf.entityid
 			SET uf.entityid = pm.meta_value
-			WHERE uf.entitytype = 'Q'
+			WHERE uf.entitytype = 'Q' and pm.meta_key= 'merged_with'
 		");
 	}
 
