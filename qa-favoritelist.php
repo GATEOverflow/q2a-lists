@@ -19,38 +19,38 @@ class my_favorite_event {
 			//in the event of merge of a question, we need to update the same in the lists
 			$newpostid = (int)$params['postid'];
 			$oldpostid = (int)$params['oldpostid'];
+			$from_site    = $params['from_site_prefix'] ?? '';
+			$to_site      = $params['to_site_prefix'] ?? '';
+			$is_from_blog = (int)($params['is_from_blog'] ?? 0);
+			$is_to_blog   = (int)($params['is_to_blog'] ?? 0);
+			$oldRows = $params['oldpost_userquestionlists'] ?? []; //All the lists associated with the oldpostid for each user
 
-			// Get all user/list combos for the OLD post
-			$oldRows = qa_db_read_all_assoc(qa_db_query_sub(
-				"SELECT userid, listids 
-				 FROM ^userquestionlists 
-				 WHERE questionid = #",
-				$oldpostid
-			));
+			//Update the list when merging/only redirecting happened between Q->Q of same site
+			if (!$is_from_blog && !$is_to_blog && ($from_site === $to_site)) {
+				foreach ($oldRows as $oldRow) {
+					$userid = (int)$oldRow['userid'];
+					$listidsOfOld = $this->qa_lists_parse_listids($oldRow['listids']); // parse comma list to array
+					// Get the NEW post's listids for this user
+					$newRow = qa_db_read_one_assoc(qa_db_query_sub(
+						"SELECT listids 
+						 FROM ^userquestionlists 
+						 WHERE userid = # 
+						   AND questionid = #",
+						$userid, $newpostid
+					), true);
 
-			foreach ($oldRows as $oldRow) {
-				$userid = (int)$oldRow['userid'];
-				$listidsOfOld = $this->qa_lists_parse_listids($oldRow['listids']); // parse comma list to array
-				// Get the NEW post's listids for this user
-				$newRow = qa_db_read_one_assoc(qa_db_query_sub(
-					"SELECT listids 
-					 FROM ^userquestionlists 
-					 WHERE userid = # 
-					   AND questionid = #",
-					$userid, $newpostid
-				), true);
+					$listidsOfNew = [];
+					if (!empty($newRow) && !empty($newRow['listids'])) {
+						$listidsOfNew = $this->qa_lists_parse_listids($newRow['listids']);
+					}
 
-				$listidsOfNew = [];
-				if (!empty($newRow) && !empty($newRow['listids'])) {
-					$listidsOfNew = $this->qa_lists_parse_listids($newRow['listids']);
-				}
+					// Difference: old minus new
+					$addlistids = array_values(array_diff($listidsOfOld, $listidsOfNew));
 
-				// Difference: old minus new
-				$addlistids = array_values(array_diff($listidsOfOld, $listidsOfNew));
-
-				// Only update if there’s something to add
-				if (!empty($addlistids)) {
-					qa_lists_savelist($userid, $newpostid, $addlistids, []); 
+					// Only update if there’s something to add
+					if (!empty($addlistids)) {
+						qa_lists_savelist($userid, $newpostid, $addlistids, []); 
+					}
 				}
 			}
         }
