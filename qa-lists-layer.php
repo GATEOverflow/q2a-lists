@@ -35,7 +35,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 					');
 
 			$this->output('
-					<script type="text/javascript" src="'.QA_HTML_THEME_LAYER_URLTOROOT.'script.js?v=0.00192"></script>
+					<script type="text/javascript" src="'.QA_HTML_THEME_LAYER_URLTOROOT.'script.js?v=0.00193"></script>
 					<link rel="stylesheet" type="text/css" href="'.QA_HTML_THEME_LAYER_URLTOROOT.'styles.css?v=0.0002">
 					');
 		}
