@@ -48,7 +48,7 @@
 
             if ( !strlen( $handle ) ) {
                 $handle = qa_get_logged_in_handle();
-                qa_redirect( $handle ? 'user/' . $handle : 'users' );
+                qa_redirect( $handle ? 'userlists/' . $handle : 'users' );
             }
 
             if ( QA_FINAL_EXTERNAL_USERS ) {
