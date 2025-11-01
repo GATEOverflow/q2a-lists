@@ -18,6 +18,17 @@ class qa_lists_admin {
             case 'qa-lists-id-name8': return 'Resources';
             case 'qa-lists-id-name9': return 'Need to Answer';
             case 'qa-lists-id-name10': return 'Watch List';
+			case 'qa-lists-id-editable0': return 0;
+			case 'qa-lists-id-editable1': return 1;
+            case 'qa-lists-id-editable2': return 1;
+            case 'qa-lists-id-editable3': return 1;
+            case 'qa-lists-id-editable4': return 0;
+            case 'qa-lists-id-editable5': return 1;
+            case 'qa-lists-id-editable6': return 0;
+            case 'qa-lists-id-editable7': return 1;
+            case 'qa-lists-id-editable8': return 1;
+            case 'qa-lists-id-editable9': return 1;
+            case 'qa-lists-id-editable10': return 1;			
             default:
                 return null;
         }
@@ -37,11 +48,35 @@ class qa_lists_admin {
 						`listid` smallint(5) NOT NULL,
 						`questionids` mediumtext,
 						`listname` varchar(40) DEFAULT NULL,
+						`public` TINYINT(1) NOT NULL DEFAULT 0,
 						PRIMARY KEY (`userid`,`listid`),
 						FOREIGN KEY(`userid`) REFERENCES `$usertablename` (`userid`) ON DELETE CASCADE
 						)";
 			$tablename1_created = true;
 
+		}
+		else {
+        // ------------------------------------------------------------
+        // Upgrade existing userlists table (add `public` column if missing)
+        // ------------------------------------------------------------
+			$columns = qa_db_read_all_values(
+				qa_db_query_sub("SHOW COLUMNS FROM `$tablename1`")
+			);
+
+			$has_public = false;
+			foreach ($columns as $col) {
+				if (is_array($col) && isset($col['Field']) && $col['Field'] === 'public') {
+					$has_public = true;
+					break;
+				} elseif ($col === 'public') {
+					$has_public = true;
+					break;
+				}
+			}
+
+			if (!$has_public) {
+				$queries[] = "ALTER TABLE `$tablename1` ADD COLUMN `public` TINYINT(1) NOT NULL DEFAULT 0;";
+			}
 		}
 		$tablename2=qa_db_add_table_prefix('userquestionlists');
 		if(!in_array($tablename2, $tableslc)) {
@@ -255,6 +290,7 @@ public function qa_lists_append_list($source_listid, $target_listid) {
 
 			for ($i = 0; $i <= $new_list_count; $i++) {
 				qa_opt('qa-lists-id-name' . $i, qa_post_text('qa-lists-id-name' . $i));
+				qa_opt('qa-lists-id-editable' . $i, (int) !!qa_post_text('qa-lists-id-editable' . $i));
 			}
 
 			if ($new_list_count < $old_list_count) {
@@ -323,13 +359,21 @@ public function qa_lists_append_list($source_listid, $target_listid) {
                 'tags'  => 'name="qa-lists-id-name' . $i . '"',
                 'value' => qa_opt('qa-lists-id-name' . $i)? qa_opt('qa-lists-id-name' . $i): $this -> option_default('qa-lists-id-name' . $i),
 		);
-        for ($i = 1; $i <= $list_count; $i++) {
-            $fields[] = array(
-                'label' => 'List name ' . $i,
-                'type'  => 'text',
-                'tags'  => 'name="qa-lists-id-name' . $i . '"',
-                'value' => qa_opt('qa-lists-id-name' . $i)? qa_opt('qa-lists-id-name' . $i): $this -> option_default('qa-lists-id-name' . $i),
-            );
+
+			    // Custom lists (editable checkbox added)
+		for ($i = 1; $i <= $list_count; $i++) {
+			$fields[] = array(
+				'label' => 'List name ' . $i,
+				'type'  => 'custom',
+				'html'  => sprintf(
+					'<input type="text" name="qa-lists-id-name%d" value="%s" style="width:200px;"> 
+					 <label><input type="checkbox" name="qa-lists-id-editable%d" value="1" %s> Allow rename</label>',
+					$i,
+					qa_html(qa_opt('qa-lists-id-name' . $i) ?: $this->option_default('qa-lists-id-name' . $i)),
+					$i,
+					qa_opt('qa-lists-id-editable' . $i) ? 'checked' : ''
+				),
+			);
         }
 
 

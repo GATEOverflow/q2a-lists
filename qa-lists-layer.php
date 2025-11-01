@@ -35,7 +35,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 					');
 
 			$this->output('
-					<script type="text/javascript" src="'.QA_HTML_THEME_LAYER_URLTOROOT.'script.js?v=0.00192"></script>
+					<script type="text/javascript" src="'.QA_HTML_THEME_LAYER_URLTOROOT.'script.js?v=0.00195"></script>
 					<link rel="stylesheet" type="text/css" href="'.QA_HTML_THEME_LAYER_URLTOROOT.'styles.css?v=0.0002">
 					');
 		}
@@ -59,90 +59,167 @@ class qa_html_theme_layer extends qa_html_theme_base {
 		qa_html_theme_base::doctype();
 
 	}
-
+	
 	public function header()
 	{
-		$request = qa_request_parts();
-		$request = $request[0];
+		$request = qa_request_part(0);
 
-		if($request === 'userlists')
-		{
-			if(qa_is_logged_in())
-			{
-	//		if(qa_get_site_theme() == "Donut")
-				$listarray = array();
-				$userid = qa_get_logged_in_userid();
-				
-				// Get list count from options
-				$list_count = (int) qa_opt('qa-lists-count');
+		if ($request === 'userlists' && qa_is_logged_in()) {
 
-				// Prepare result array
-				$lists = array();
+			$userid = qa_get_logged_in_userid();
 
-				// Loop from 0 to $list_count
-				for ($i = 0; $i <= $list_count; $i++) {
-					$list_name = qa_opt('qa-lists-id-name' . $i);
-					$lists[] = array(
-						'listid'   => $i,
-						'listname' => $list_name
+			// Restricted (non-editable) list IDs
+			$restricted_lists = [0, 4, 6];
+
+			// Handle rename submission (from inline JS POST)
+			if (qa_post_text('rename_listid') !== null) {
+				$listid = (int) qa_post_text('rename_listid');
+				$newname = trim(qa_post_text('new_listname'));
+
+				if ($newname !== '' && !in_array($listid, $restricted_lists)) {
+					qa_db_query_sub(
+						'UPDATE ^userlists SET listname=$ WHERE userid=# AND listid=#',
+						$newname, $userid, $listid
 					);
 				}
-				if(true)
-				{
-					
-		/*		$this->output('
-						<div id="dropdown" class="dropdown">
-						<button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">Question Lists
-						<span class="caret"></span></button>
-						<ul class="dropdown-menu">');*/
-				$query = $_GET;
-				$selected = @$query['listid'];
-				$url = strtok(qa_self_html(), '?');
-				for($i = 0; $i <= $list_count; $i++)
-				{
-					$query['listid'] = $lists[$i]['listid'];
-					$queryval = http_build_query($query);
-					$clist = array(
-						'label' => $lists[$i]['listname'],
-						'url' => $url.'?'.$queryval,
-						'selected' => ($lists[$i]['listid'] == $selected)
-					);
-					$listarray [] = $clist;
-		//			$this-> output('<li><a href="'.$url.'?'.$queryval.'">'.$lists[$i]['listname'].'</a></li>');
-				}
-				if(!$selected) $listarray[0]['selected'] = true;
-		/*		$this->output('</ul>
-						</div>');*/
-				}
-
-
 			}
-			$this->content['navigation']['sub']= $listarray;
-		       /*	array(
-					'label' => qa_lang_html('qa_tupm_lang/subnav_title'),
-					'url' => qa_path_html('topusers'),
-					'selected' => ($qa_request == 'topusers')
+			// Handle AJAX request for toggling public/private
+			if (qa_post_text('toggle_public_listid') !== null) {
+				$listid = (int) qa_post_text('toggle_public_listid');
+				$userid = qa_get_logged_in_userid();
 
-		       );*/
+				// Read current visibility
+				$public = qa_db_read_one_value(
+					qa_db_query_sub(
+						'SELECT public FROM ^userlists WHERE userid=# AND listid=#',
+						$userid, $listid
+					),
+					true
+				);
+
+				if ($public === null) {
+					echo json_encode(['error' => 'List not found']);
+					qa_exit();
+				}
+
+				// Toggle (if 1 → 0, if 0 → 1)
+				$new_public = ((int)$public === 1) ? 0 : 1;
+
+				// Update DB
+				qa_db_query_sub(
+					'UPDATE ^userlists SET public=# WHERE userid=# AND listid=#',
+					$new_public, $userid, $listid
+				);
+
+				echo json_encode([
+					'success' => true,
+					'listid' => $listid,
+					'new_public' => $new_public
+				]);
+				qa_exit();
+			}
+
+			// Fetch user's lists
+			$lists = qa_db_read_all_assoc(qa_db_query_sub(
+				'SELECT listid, listname FROM ^userlists WHERE userid=# ORDER BY listid',
+				$userid
+			));
+
+			// Get total list count (from admin setting)
+			$list_count = (int) qa_opt('qa-lists-count');
+
+			// Build a map for user-defined lists for quick lookup
+			$user_lists = [];
+			foreach ($lists as $l) {
+				$user_lists[(int)$l['listid']] = $l['listname'];
+			}
+
+			// Always build full list set up to $list_count
+			$final_lists = [];
+			for ($i = 0; $i <= $list_count; $i++) {
+				if (isset($user_lists[$i]) && $user_lists[$i] !== '') {
+					// Use user's custom list name
+					$final_lists[] = [
+						'listid'   => $i,
+						'listname' => $user_lists[$i],
+					];
+				} else {
+					// Fallback to default list name from qa_opt
+					$default_name = qa_opt('qa-lists-id-name' . $i);
+					if ($default_name !== null && $default_name !== '') {
+						$final_lists[] = [
+							'listid'   => $i,
+							'listname' => $default_name,
+						];
+					}
+				}
+			}
+
+			// Replace $lists with merged result
+			$lists = $final_lists;
+
+
+			// Build sub-navigation
+			$query = $_GET;
+			$selected = qa_request_part(2) ?: 0;
+
+			// Determine which handle to use
+			$handle = qa_request_part(1) ?: qa_get_logged_in_handle();
+
+			// Determine current category (if any)
+			$categoryslugs = qa_request_parts(3); // e.g., ['theory-of-computation']
+			$categorypath = $categoryslugs ? implode('/', $categoryslugs) : '';
+
+			$nav_items = [];
+
+			foreach ($lists as $l) {
+				// Build base path: /userlists/{handle}/{listid}
+				$listpath = 'userlists/' . $handle . '/' . $l['listid'];
+
+				// Add category if it exists
+				if ($categorypath) {
+					$listpath .= '/' . $categorypath;
+				}
+
+				// Preserve query params (like sort)
+				unset($query['listid'], $query['handle']);
+				$queryval = http_build_query($query);
+				$href = qa_path_html($listpath) . ($queryval ? '?' . $queryval : '');
+
+				$nav_items['list_' . $l['listid']] = [
+					'label' => qa_html($l['listname']),
+					'url' => $href,
+					'selected' => ((int)$l['listid'] === (int)$selected),
+				];
+			}
+
+			// Default select first if nothing
+			if (!$selected && count($nav_items)) {
+				reset($nav_items);
+				$firstKey = key($nav_items);
+				$nav_items[$firstKey]['selected'] = true;
+			}
+
+			$this->content['navigation']['sub'] = $nav_items;
 
 		}
-		//else
-		qa_html_theme_base::header();
+
+			qa_html_theme_base::header();
 	}
 
 	public function q_view_buttons($q_view)
 	{
 		if($this -> template == 'question')
 		{
-		if(qa_is_logged_in()  && isset($q_view['raw']['postid']))
-		{
-			$q_view['form']['buttons']['lists'] = array("tags" => 'data-postid="'.$q_view['raw']['postid'].'"  id="qa-userlists"', "label" => qa_lang_html('lists_lang/lists'), "popup" => "Add to a list");
+			if(qa_is_logged_in()  && isset($q_view['raw']['postid']))
+			{
+				$q_view['form']['buttons']['lists'] = array("tags" => 'data-postid="'.$q_view['raw']['postid'].'"  id="qa-userlists"', "label" => qa_lang_html('lists_lang/lists'), "popup" => "Add to a list");
 
-		}
+			}
 		}
 		qa_html_theme_base::q_view_buttons($q_view);
-
 	}
+	
 	public function q_view_main($q_view)
 	{
 		if(qa_is_logged_in() && $this->template=="question")
@@ -184,5 +261,215 @@ class qa_html_theme_layer extends qa_html_theme_base {
 	} // END function body_hidden()
 
 
+	public function body_suffix(){
+		qa_html_theme_base::body_suffix();
+
+		if (qa_request_part(0) === 'userlists') {
+			$postUrl = qa_self_html();
+			$userid = qa_get_logged_in_userid();
+			$selected_list = (int) qa_request_part(2);
+
+			// Fetch public flag for selected list
+			$public = qa_db_read_one_value(
+				qa_db_query_sub(
+					'SELECT public FROM ^userlists WHERE userid=# AND listid=#',
+					$userid,
+					$selected_list
+				),
+				true
+			);
+
+			if ($public === null) {
+				$public = 0; // fallback if not found
+			}
+
+			//Dynamically build restricted list IDs
+			$restricted_lists = [];
+			$list_count = (int) qa_opt('qa-lists-count');
+			for ($i = 0; $i <= $list_count; $i++) {
+				$is_public = (int) qa_opt('qa-lists-id-editable' . $i);
+				if ($is_public === 0) {
+					$restricted_lists[] = $i;
+				}
+			}
+			$restricted_json = json_encode(array_fill_keys($restricted_lists, true));
+
+			echo '<script>';
+			?>
+			jQuery(function ($) {
+			  const restricted = <?php echo $restricted_json ?: '{}'; ?>;
+			  const postUrl = <?php echo json_encode($postUrl); ?>;
+			  const currentId = <?php echo (int) $selected_list; ?>;
+			  const isPublicInitial = <?php echo (int) $public; ?>;
+
+			  function getListIdFromHref(href) {
+				if (!href) return null;
+				const m = href.match(/\/userlists\/[^/]+\/(\d+)/);
+				return m ? parseInt(m[1], 10) : null;
+			  }
+
+			  // Build edit + visibility icons
+			  function ensureIconsForCurrent() {
+				if (currentId === null || isNaN(currentId)) return;
+				$(".list-edit-wrapper").remove();
+
+				const target = $(".qa-nav-sub a, .qa-nav-sub-list a").filter(function () {
+				  return getListIdFromHref($(this).attr("href")) === currentId;
+				}).first();
+
+				if (!target.length) return;
+
+				// Make sure link and icons align
+				target.css({
+				  display: "inline-block",
+				  verticalAlign: "middle",
+				  marginRight: "4px"
+				});
+
+				const wrapper = $("<span/>", {
+				  class: "list-edit-wrapper",
+				  css: { display: "inline-block", verticalAlign: "middle" }
+				});
+
+				// ✏️ Rename (only for non-restricted)
+				if (!restricted[currentId]) {
+				  const editIcon = $("<span/>", {
+					class: "list-edit-icon",
+					title: "Rename list",
+					text: "✏️",
+					css: { cursor: "pointer", opacity: 0.8, marginRight: "6px" }
+				  });
+				  wrapper.append(editIcon);
+				}
+
+				// 👁 / 🔒 Visibility toggle (always shown)
+				const viewIcon = $("<span/>", {
+				  class: "list-view-icon",
+				  text: isPublicInitial ? "🔒" : "👁",
+				  title: isPublicInitial
+					? "Public (click to make private)"
+					: "Private (click to make public)",
+				  css: { cursor: "pointer", opacity: 0.8 }
+				}).data("public", isPublicInitial);
+
+				wrapper.append(viewIcon);
+				target.after(wrapper);
+			  }
+
+			  // Inline rename handler
+			  $(document).on("click", ".list-edit-icon", function (e) {
+				e.preventDefault();
+				e.stopPropagation();
+
+				const icon = $(this);
+				const link = icon.closest(".list-edit-wrapper").prev("a");
+				if (!link.length) return;
+
+				const listid = getListIdFromHref(link.attr("href"));
+				if (!listid) return;
+				if (restricted[listid]) {
+				  alert("This list cannot be renamed.");
+				  return;
+				}
+
+				const current = $.trim(link.text());
+				const input = $("<input/>", {
+				  type: "text",
+				  value: current,
+				  class: "listname-input"
+				}).css({
+				  width: (Math.max(current.length, 2) + 2) + "ch",
+				  display: "inline-block",
+				  verticalAlign: "middle"
+				});
+
+				link.replaceWith(input);
+				input.focus().select();
+
+				function restore(name) {
+				  const newLink = $("<a/>", { href: link.attr("href"), text: name });
+				  newLink.css({
+					display: "inline-block",
+					verticalAlign: "middle",
+					marginRight: "4px"
+				  });
+				  input.replaceWith(newLink);
+				  newLink.after(icon.closest(".list-edit-wrapper"));
+				}
+
+				function save() {
+				  const newname = $.trim(input.val());
+				  if (!newname || newname === current) {
+					restore(current);
+					return;
+				  }
+
+				  $.post(postUrl, { rename_listid: listid, new_listname: newname, qa_click: 1 })
+					.done(() => restore(newname))
+					.fail(() => restore(current));
+				}
+
+				input.on("blur", save);
+				input.on("keydown", (ev) => {
+				  if (ev.key === "Enter") save();
+				  if (ev.key === "Escape") restore(current);
+				});
+			  });
+
+			  // 👁 / 🔒 Visibility toggle handler
+			  $(document).on("click", ".list-view-icon", function (e) {
+				e.preventDefault();
+				e.stopPropagation();
+
+				const icon = $(this);
+				const link = icon.closest(".list-edit-wrapper").prev("a");
+				if (!link.length) return;
+
+				const listid = getListIdFromHref(link.attr("href"));
+				if (!listid) return;
+
+				const isPublic = icon.data("public") || 0;
+				const msg = isPublic ? "Make this list private?" : "Make this list public?";
+				if (!confirm(msg)) return;
+
+				$.post(postUrl, {
+				  toggle_public_listid: listid, // handled in PHP
+				  qa_click: 1
+				}).done(function (resp) {
+				  let data;
+				  try {
+					data = typeof resp === "object" ? resp : JSON.parse(resp);
+				  } catch (e) {}
+				  const newState =
+					data && typeof data.new_public !== "undefined"
+					  ? data.new_public
+					  : isPublic
+					  ? 0
+					  : 1;
+
+				  icon.text(newState ? "🔒" : "👁");
+				  icon.attr(
+					"title",
+					newState
+					  ? "Public (click to make private)"
+					  : "Private (click to make public)"
+				  );
+				  icon.data("public", newState);
+				});
+			  });
+
+			  // Initialize once nav is ready
+			  let tries = 0,
+				t = setInterval(function () {
+				  if ($(".qa-nav-sub a").length || tries++ > 15) {
+					clearInterval(t);
+					ensureIconsForCurrent();
+				  }
+				}, 150);
+			});
+			<?php
+				echo '</script>';
+		}
+	}
 }
 
