@@ -165,13 +165,6 @@ function qa_lists_save_questions($userid, $list_id, $postids)	//function defined
 /*                              
 				Omit PHP closing tag to help avoid accidental output
  
- Issues:
- 1. Listid reset to 0 on category click - resolved
- 2. Pagination issue - resolved
- 3. Other user list - can be seen by admins.
- 4. Edit the list name - resolved
- 5. User may public his lists
- 
  */                              
 
 

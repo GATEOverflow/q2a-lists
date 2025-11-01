@@ -33,6 +33,129 @@ class qa_lists_admin {
                 return null;
         }
     }
+	/**
+	 * Repair Question favorites for merged posts on Q2A (PHP 8.0+ / MySQL 8.0+).
+	 *
+	 * Steps:
+	 *  1) If ^postmeta exists, build a final merge map via recursive CTE from ^postmeta directly.
+	 *  2) Remap ^userfavorites (entitytype='Q') to the final merged target.
+	 *  3) Remove favorites to non-existent questions.
+	 *  4) Deduplicate Q favorites (keep one per (userid, entitytype, entityid, favoritetype)).
+	 *  5) Rebuild lists (list 0) in batches.
+	 *
+	 * Safe for messy data (duplicate meta rows, long merge chains).
+	 */
+	function q2a_repair_question_favorites_mysql8(int $batchSize = 500): void
+	{
+		qa_db_query_sub('START TRANSACTION');
+
+		try {
+			// 0) Check postmeta exists (some installs might not have it)
+			$postmetaExists = qa_db_read_one_value(
+				qa_db_query_sub('SHOW TABLES LIKE $', QA_MYSQL_TABLE_PREFIX . 'postmeta'),
+				true
+			);
+
+			if ($postmetaExists) {
+				// 1) Build final merge map (src_id -> final dst_id) from ^postmeta
+				qa_db_query_sub('DROP TEMPORARY TABLE IF EXISTS tmp_merged_map_final');
+				qa_db_query_sub("
+					CREATE TEMPORARY TABLE tmp_merged_map_final
+					(
+					  src_id BIGINT UNSIGNED PRIMARY KEY,
+					  dst_id BIGINT UNSIGNED NOT NULL
+					) ENGINE=Memory
+					WITH RECURSIVE base AS (
+					  SELECT
+						pm.post_id AS src_id,
+						CAST(MAX(pm.meta_value) AS UNSIGNED) AS dst_id
+					  FROM ^postmeta pm
+					  JOIN ^posts p_src
+							ON p_src.postid = pm.post_id
+						   AND p_src.type LIKE 'Q%'
+					  WHERE pm.meta_key = 'merged_with'
+						AND pm.meta_value REGEXP '^[0-9]+$'
+					  GROUP BY pm.post_id
+					),
+					chain AS (
+					  SELECT src_id, dst_id, 1 AS depth FROM base
+					  UNION ALL
+					  SELECT c.src_id, b.dst_id, c.depth + 1
+					  FROM chain c
+					  JOIN base b ON c.dst_id = b.src_id
+					  WHERE c.depth < 50
+					)
+					SELECT src_id, MAX(dst_id) AS dst_id
+					FROM chain
+					GROUP BY src_id
+				");
+
+				// 2) Pre-delete rows that would collide after remapping (avoid duplicate PK)
+				// If a user favorites A (src) and also already favorites B (dst), remove A before update.
+				qa_db_query_sub("
+					DELETE uf_src
+					FROM ^userfavorites uf_src
+					JOIN tmp_merged_map_final m
+					  ON m.src_id = uf_src.entityid
+					JOIN ^userfavorites uf_dst
+					  ON uf_dst.userid = uf_src.userid
+					 AND uf_dst.entitytype = 'Q'
+					 AND uf_dst.entityid   = m.dst_id
+					WHERE uf_src.entitytype = 'Q'
+				");
+
+				// 3) Remap remaining favorites from src -> dst
+				qa_db_query_sub("
+					UPDATE ^userfavorites uf
+					JOIN tmp_merged_map_final m ON m.src_id = uf.entityid
+					SET uf.entityid = m.dst_id
+					WHERE uf.entitytype = 'Q'
+				");
+			}
+
+			// 4) Remove favorites to questions that no longer exist
+			qa_db_query_sub("
+				DELETE uf
+				FROM ^userfavorites uf
+				LEFT JOIN ^posts p
+					   ON p.postid = uf.entityid
+					  AND p.type LIKE 'Q%'
+				WHERE uf.entitytype = 'Q'
+				  AND p.postid IS NULL
+			");
+
+			// 5) Rebuild list 0 in batches
+			$offset = 0;
+			while (true) {
+				$res = qa_db_query_sub("
+					SELECT uf.userid, uf.entityid AS questionid
+					FROM ^userfavorites uf
+					WHERE uf.entitytype = 'Q'
+					ORDER BY uf.userid, uf.entityid
+					LIMIT #, #
+				", $offset, $batchSize);
+
+				$rows = qa_db_read_all_assoc($res);
+				if (empty($rows)) {
+					break;
+				}
+
+				foreach ($rows as $row) {
+					$uid = (int)$row['userid'];
+					$qid = (int)$row['questionid'];
+					if ($uid > 0 && $qid > 0) {
+						qa_lists_savelist($uid, $qid, [0], []); // add to list 0
+					}
+				}
+				$offset += $batchSize;
+			}
+
+			qa_db_query_sub('COMMIT');
+		} catch (\Throwable $e) {
+			qa_db_query_sub('ROLLBACK');
+			throw $e;
+		}
+	}
 	function init_queries($tableslc) {
 		require_once QA_INCLUDE_DIR."db/selects.php";
 		$queries = array();
