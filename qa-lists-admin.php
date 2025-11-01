@@ -18,185 +18,215 @@ class qa_lists_admin {
             case 'qa-lists-id-name8': return 'Resources';
             case 'qa-lists-id-name9': return 'Need to Answer';
             case 'qa-lists-id-name10': return 'Watch List';
+			case 'qa-lists-id-editable0': return 0;
+			case 'qa-lists-id-editable1': return 1;
+            case 'qa-lists-id-editable2': return 1;
+            case 'qa-lists-id-editable3': return 1;
+            case 'qa-lists-id-editable4': return 0;
+            case 'qa-lists-id-editable5': return 1;
+            case 'qa-lists-id-editable6': return 0;
+            case 'qa-lists-id-editable7': return 1;
+            case 'qa-lists-id-editable8': return 1;
+            case 'qa-lists-id-editable9': return 1;
+            case 'qa-lists-id-editable10': return 1;			
             default:
                                        return null;
         }
     }
+	/**
+	 * Repair Question favorites for merged posts on Q2A (PHP 8.0+ / MySQL 8.0+).
+	 *
+	 * Steps:
+	 *  1) If ^postmeta exists, build a final merge map via recursive CTE from ^postmeta directly.
+	 *  2) Remap ^userfavorites (entitytype='Q') to the final merged target.
+	 *  3) Remove favorites to non-existent questions.
+	 *  4) Deduplicate Q favorites (keep one per (userid, entitytype, entityid, favoritetype)).
+	 *  5) Rebuild lists (list 0) in batches.
+	 *
+	 * Safe for messy data (duplicate meta rows, long merge chains).
+	 */
+	function q2a_repair_question_favorites_mysql8(int $batchSize = 500): void
+	{
+		qa_db_query_sub('START TRANSACTION');
 
-/**
- * Repair Question favorites for merged posts on Q2A (PHP 8.0+ / MySQL 8.0+).
- *
- * Steps:
- *  1) If ^postmeta exists, build a final merge map via recursive CTE from ^postmeta directly.
- *  2) Remap ^userfavorites (entitytype='Q') to the final merged target.
- *  3) Remove favorites to non-existent questions.
- *  4) Deduplicate Q favorites (keep one per (userid, entitytype, entityid, favoritetype)).
- *  5) Rebuild lists (list 0) in batches.
- *
- * Safe for messy data (duplicate meta rows, long merge chains).
- */
-function q2a_repair_question_favorites_mysql8(int $batchSize = 500): void
-{
-    qa_db_query_sub('START TRANSACTION');
+		try {
+			// 0) Check postmeta exists (some installs might not have it)
+			$postmetaExists = qa_db_read_one_value(
+				qa_db_query_sub('SHOW TABLES LIKE $', QA_MYSQL_TABLE_PREFIX . 'postmeta'),
+				true
+			);
 
-    try {
-        // 0) Check postmeta exists (some installs might not have it)
-        $postmetaExists = qa_db_read_one_value(
-            qa_db_query_sub('SHOW TABLES LIKE $', QA_MYSQL_TABLE_PREFIX . 'postmeta'),
-            true
-        );
+			if ($postmetaExists) {
+				// 1) Build final merge map (src_id -> final dst_id) from ^postmeta
+				qa_db_query_sub('DROP TEMPORARY TABLE IF EXISTS tmp_merged_map_final');
+				qa_db_query_sub("
+					CREATE TEMPORARY TABLE tmp_merged_map_final
+					(
+					  src_id BIGINT UNSIGNED PRIMARY KEY,
+					  dst_id BIGINT UNSIGNED NOT NULL
+					) ENGINE=Memory
+					WITH RECURSIVE base AS (
+					  SELECT
+						pm.post_id AS src_id,
+						CAST(MAX(pm.meta_value) AS UNSIGNED) AS dst_id
+					  FROM ^postmeta pm
+					  JOIN ^posts p_src
+							ON p_src.postid = pm.post_id
+						   AND p_src.type LIKE 'Q%'
+					  WHERE pm.meta_key = 'merged_with'
+						AND pm.meta_value REGEXP '^[0-9]+$'
+					  GROUP BY pm.post_id
+					),
+					chain AS (
+					  SELECT src_id, dst_id, 1 AS depth FROM base
+					  UNION ALL
+					  SELECT c.src_id, b.dst_id, c.depth + 1
+					  FROM chain c
+					  JOIN base b ON c.dst_id = b.src_id
+					  WHERE c.depth < 50
+					)
+					SELECT src_id, MAX(dst_id) AS dst_id
+					FROM chain
+					GROUP BY src_id
+				");
 
-        if ($postmetaExists) {
-            // 1) Build final merge map (src_id -> final dst_id) from ^postmeta
-            qa_db_query_sub('DROP TEMPORARY TABLE IF EXISTS tmp_merged_map_final');
-            qa_db_query_sub("
-                CREATE TEMPORARY TABLE tmp_merged_map_final
-                (
-                  src_id BIGINT UNSIGNED PRIMARY KEY,
-                  dst_id BIGINT UNSIGNED NOT NULL
-                ) ENGINE=Memory
-                WITH RECURSIVE base AS (
-                  SELECT
-                    pm.post_id AS src_id,
-                    CAST(MAX(pm.meta_value) AS UNSIGNED) AS dst_id
-                  FROM ^postmeta pm
-                  JOIN ^posts p_src
-                        ON p_src.postid = pm.post_id
-                       AND p_src.type LIKE 'Q%'
-                  WHERE pm.meta_key = 'merged_with'
-                    AND pm.meta_value REGEXP '^[0-9]+$'
-                  GROUP BY pm.post_id
-                ),
-                chain AS (
-                  SELECT src_id, dst_id, 1 AS depth FROM base
-                  UNION ALL
-                  SELECT c.src_id, b.dst_id, c.depth + 1
-                  FROM chain c
-                  JOIN base b ON c.dst_id = b.src_id
-                  WHERE c.depth < 50
-                )
-                SELECT src_id, MAX(dst_id) AS dst_id
-                FROM chain
-                GROUP BY src_id
-            ");
+				// 2) Pre-delete rows that would collide after remapping (avoid duplicate PK)
+				// If a user favorites A (src) and also already favorites B (dst), remove A before update.
+				qa_db_query_sub("
+					DELETE uf_src
+					FROM ^userfavorites uf_src
+					JOIN tmp_merged_map_final m
+					  ON m.src_id = uf_src.entityid
+					JOIN ^userfavorites uf_dst
+					  ON uf_dst.userid = uf_src.userid
+					 AND uf_dst.entitytype = 'Q'
+					 AND uf_dst.entityid   = m.dst_id
+					WHERE uf_src.entitytype = 'Q'
+				");
 
-            // 2) Pre-delete rows that would collide after remapping (avoid duplicate PK)
-            // If a user favorites A (src) and also already favorites B (dst), remove A before update.
-            qa_db_query_sub("
-                DELETE uf_src
-                FROM ^userfavorites uf_src
-                JOIN tmp_merged_map_final m
-                  ON m.src_id = uf_src.entityid
-                JOIN ^userfavorites uf_dst
-                  ON uf_dst.userid = uf_src.userid
-                 AND uf_dst.entitytype = 'Q'
-                 AND uf_dst.entityid   = m.dst_id
-                WHERE uf_src.entitytype = 'Q'
-            ");
+				// 3) Remap remaining favorites from src -> dst
+				qa_db_query_sub("
+					UPDATE ^userfavorites uf
+					JOIN tmp_merged_map_final m ON m.src_id = uf.entityid
+					SET uf.entityid = m.dst_id
+					WHERE uf.entitytype = 'Q'
+				");
+			}
 
-            // 3) Remap remaining favorites from src -> dst
-            qa_db_query_sub("
-                UPDATE ^userfavorites uf
-                JOIN tmp_merged_map_final m ON m.src_id = uf.entityid
-                SET uf.entityid = m.dst_id
-                WHERE uf.entitytype = 'Q'
-            ");
-        }
+			// 4) Remove favorites to questions that no longer exist
+			qa_db_query_sub("
+				DELETE uf
+				FROM ^userfavorites uf
+				LEFT JOIN ^posts p
+					   ON p.postid = uf.entityid
+					  AND p.type LIKE 'Q%'
+				WHERE uf.entitytype = 'Q'
+				  AND p.postid IS NULL
+			");
 
-        // 4) Remove favorites to questions that no longer exist
-        qa_db_query_sub("
-            DELETE uf
-            FROM ^userfavorites uf
-            LEFT JOIN ^posts p
-                   ON p.postid = uf.entityid
-                  AND p.type LIKE 'Q%'
-            WHERE uf.entitytype = 'Q'
-              AND p.postid IS NULL
-        ");
+			// 5) Rebuild list 0 in batches
+			$offset = 0;
+			while (true) {
+				$res = qa_db_query_sub("
+					SELECT uf.userid, uf.entityid AS questionid
+					FROM ^userfavorites uf
+					WHERE uf.entitytype = 'Q'
+					ORDER BY uf.userid, uf.entityid
+					LIMIT #, #
+				", $offset, $batchSize);
 
-        // 5) Rebuild list 0 in batches
-        $offset = 0;
-        while (true) {
-            $res = qa_db_query_sub("
-                SELECT uf.userid, uf.entityid AS questionid
-                FROM ^userfavorites uf
-                WHERE uf.entitytype = 'Q'
-                ORDER BY uf.userid, uf.entityid
-                LIMIT #, #
-            ", $offset, $batchSize);
+				$rows = qa_db_read_all_assoc($res);
+				if (empty($rows)) {
+					break;
+				}
 
-            $rows = qa_db_read_all_assoc($res);
-            if (empty($rows)) {
-                break;
-            }
+				foreach ($rows as $row) {
+					$uid = (int)$row['userid'];
+					$qid = (int)$row['questionid'];
+					if ($uid > 0 && $qid > 0) {
+						qa_lists_savelist($uid, $qid, [0], []); // add to list 0
+					}
+				}
+				$offset += $batchSize;
+			}
 
-            foreach ($rows as $row) {
-                $uid = (int)$row['userid'];
-                $qid = (int)$row['questionid'];
-                if ($uid > 0 && $qid > 0) {
-                    qa_lists_savelist($uid, $qid, [0], []); // add to list 0
-                }
-            }
-            $offset += $batchSize;
-        }
-
-        qa_db_query_sub('COMMIT');
-    } catch (\Throwable $e) {
-        qa_db_query_sub('ROLLBACK');
-        throw $e;
-    }
-}
-
-
-    function init_queries($tableslc) {
-        require_once QA_INCLUDE_DIR."db/selects.php";
-        $queries = array();
-        $tablename1=qa_db_add_table_prefix('userlists');
-        $usertablename=qa_db_add_table_prefix('users');
-        $posttablename=qa_db_add_table_prefix('posts');
-        $tablename1_created = false;
-        $tablename2_created = false;
-        if(!in_array($tablename1, $tableslc)) {
-            $queries[] = "
-                CREATE TABLE `$tablename1` (
-                        `userid` int(10) unsigned NOT NULL,
-                        `listid` smallint(5) NOT NULL,
-                        `questionids` mediumtext,
-                        `listname` varchar(40) DEFAULT NULL,
-                        PRIMARY KEY (`userid`,`listid`),
-                        FOREIGN KEY(`userid`) REFERENCES `$usertablename` (`userid`) ON DELETE CASCADE
-                        )";
-            $tablename1_created = true;
-
-        }
-        $tablename2=qa_db_add_table_prefix('userquestionlists');
-        if(!in_array($tablename2, $tableslc)) {
-            $queries[] = "
-                CREATE TABLE `$tablename2` (
-                        `userid` int(10) unsigned NOT NULL,
-                        `questionid` int(10) unsigned NOT NULL,
-                        `listids` varchar(255) DEFAULT NULL,
-                        PRIMARY KEY (`userid`,`questionid`),
-                        FOREIGN KEY(`userid`) REFERENCES `$usertablename` (`userid`) ON DELETE CASCADE,
-                        FOREIGN KEY(`questionid`) REFERENCES `$posttablename` (`postid`) ON DELETE CASCADE
-                        )";
-            $tablename2_created = true;
-        }
-        // After creating tables, migrate favorites
-        if ($tablename1_created && $tablename2_created) {
-            $this->reset_favorites_list();
-            //error_log("checked");
+			qa_db_query_sub('COMMIT');
+		} catch (\Throwable $e) {
+			qa_db_query_sub('ROLLBACK');
+			throw $e;
+		}
 	}
-	if (!qa_opt('qa-lists-id-name0'))
-		qa_opt('qa-lists-id-name0', 'Favorites');
+	function init_queries($tableslc) {
+		require_once QA_INCLUDE_DIR."db/selects.php";
+		$queries = array();
+		$tablename1=qa_db_add_table_prefix('userlists');
+		$usertablename=qa_db_add_table_prefix('users');
+		$posttablename=qa_db_add_table_prefix('posts');
+		$tablename1_created = false;
+		$tablename2_created = false;
+		if(!in_array($tablename1, $tableslc)) {
+			$queries[] = "
+				CREATE TABLE `$tablename1` (
+						`userid` int(10) unsigned NOT NULL,
+						`listid` smallint(5) NOT NULL,
+						`questionids` mediumtext,
+						`listname` varchar(40) DEFAULT NULL,
+						`public` TINYINT(1) NOT NULL DEFAULT 0,
+						PRIMARY KEY (`userid`,`listid`),
+						FOREIGN KEY(`userid`) REFERENCES `$usertablename` (`userid`) ON DELETE CASCADE
+						)";
+			$tablename1_created = true;
 
-        return $queries;
-    } 
+		}
+		else {
+        // ------------------------------------------------------------
+        // Upgrade existing userlists table (add `public` column if missing)
+        // ------------------------------------------------------------
+			$columns = qa_db_read_all_values(
+				qa_db_query_sub("SHOW COLUMNS FROM `$tablename1`")
+			);
 
-    function allow_template($template)
-    {
-        return ($template!='admin');
-    }
+			$has_public = false;
+			foreach ($columns as $col) {
+				if (is_array($col) && isset($col['Field']) && $col['Field'] === 'public') {
+					$has_public = true;
+					break;
+				} elseif ($col === 'public') {
+					$has_public = true;
+					break;
+				}
+			}
+
+			if (!$has_public) {
+				$queries[] = "ALTER TABLE `$tablename1` ADD COLUMN `public` TINYINT(1) NOT NULL DEFAULT 0;";
+			}
+		}
+		$tablename2=qa_db_add_table_prefix('userquestionlists');
+		if(!in_array($tablename2, $tableslc)) {
+			$queries[] = "
+				CREATE TABLE `$tablename2` (
+						`userid` int(10) unsigned NOT NULL,
+						`questionid` int(10) unsigned NOT NULL,
+						  `listids` varchar(255) DEFAULT NULL,
+						  PRIMARY KEY (`userid`,`questionid`),
+						FOREIGN KEY(`userid`) REFERENCES `$usertablename` (`userid`) ON DELETE CASCADE,
+						FOREIGN KEY(`questionid`) REFERENCES `$posttablename` (`postid`) ON DELETE CASCADE
+						)";
+			$tablename2_created = true;
+		}
+	    // After creating tables, migrate favorites
+		if ($tablename1_created && $tablename2_created) {
+			$this->reset_favorites_list();
+			//error_log("checked");
+		}
+		return $queries;
+	} 
+
+	function allow_template($template)
+	{
+		return ($template!='admin');
+	}
+	
 
     public function reset_favorites_list()
     {
@@ -343,9 +373,10 @@ function q2a_repair_question_favorites_mysql8(int $batchSize = 500): void
 
             qa_opt('qa-lists-count', $new_list_count);
 
-            for ($i = 0; $i <= $new_list_count; $i++) {
-                qa_opt('qa-lists-id-name' . $i, qa_post_text('qa-lists-id-name' . $i));
-            }
+			for ($i = 0; $i <= $new_list_count; $i++) {
+				qa_opt('qa-lists-id-name' . $i, qa_post_text('qa-lists-id-name' . $i));
+				qa_opt('qa-lists-id-editable' . $i, (int) !!qa_post_text('qa-lists-id-editable' . $i));
+			}
 
             if ($new_list_count < $old_list_count) {
                 // Delete excess lists from DB
@@ -412,14 +443,22 @@ function q2a_repair_question_favorites_mysql8(int $batchSize = 500): void
                 'type'  => 'static',
                 'tags'  => 'name="qa-lists-id-name' . $i . '"',
                 'value' => qa_opt('qa-lists-id-name' . $i)? qa_opt('qa-lists-id-name' . $i): $this -> option_default('qa-lists-id-name' . $i),
-                );
-        for ($i = 1; $i <= $list_count; $i++) {
-            $fields[] = array(
-                    'label' => 'List name ' . $i,
-                    'type'  => 'text',
-                    'tags'  => 'name="qa-lists-id-name' . $i . '"',
-                    'value' => qa_opt('qa-lists-id-name' . $i)? qa_opt('qa-lists-id-name' . $i): $this -> option_default('qa-lists-id-name' . $i),
-                    );
+		);
+
+			    // Custom lists (editable checkbox added)
+		for ($i = 1; $i <= $list_count; $i++) {
+			$fields[] = array(
+				'label' => 'List name ' . $i,
+				'type'  => 'custom',
+				'html'  => sprintf(
+					'<input type="text" name="qa-lists-id-name%d" value="%s" style="width:200px;"> 
+					 <label><input type="checkbox" name="qa-lists-id-editable%d" value="1" %s> Allow rename</label>',
+					$i,
+					qa_html(qa_opt('qa-lists-id-name' . $i) ?: $this->option_default('qa-lists-id-name' . $i)),
+					$i,
+					qa_opt('qa-lists-id-editable' . $i) ? 'checked' : ''
+				),
+			);
         }
 
 

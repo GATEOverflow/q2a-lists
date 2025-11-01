@@ -7,11 +7,11 @@ if (!defined('QA_VERSION')) { // don't allow this page to be requested directly 
 }               
 
 qa_register_plugin_module('module', 'qa-lists-admin.php', 'qa_lists_admin', 'Question Lists');
-qa_register_plugin_module('page', 'qa-lists-page.php', 'qa_lists_page', 'Question Lists Page');
+qa_register_plugin_module('page', 'qa-lists.php', 'qa_lists_page', 'Question Lists Page');
 qa_register_plugin_module('page', 'qa-lists-ajax-page.php', 'qa_lists_ajax_page', 'Question Lists AJAX Page');
 qa_register_plugin_layer('qa-lists-layer.php', 'Question Lists Layer');
 qa_register_plugin_overrides('qa-lists-overrides.php', 'Question Lists Override');
-qa_register_plugin_phrases('qa-lists-lang-*.php', 'lists_lang');
+qa_register_plugin_phrases('qa-lists-lang-default.php', 'lists_lang');
 qa_register_plugin_module('event', 'qa-favoritelist.php', 'my_favorite_event', 'My Favorite Event');
     
 
@@ -164,6 +164,7 @@ function qa_lists_save_questions($userid, $list_id, $postids)	//function defined
 
 /*                              
 				Omit PHP closing tag to help avoid accidental output
+ 
  */                              
 
 

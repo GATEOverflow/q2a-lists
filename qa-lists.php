@@ -1,226 +1,277 @@
 <?php
-
-if ( !defined( 'QA_VERSION' ) ) { // don't allow this page to be requested directly from browser
-	header( 'Location: ../' );
-	exit;
-}
-require_once QA_INCLUDE_DIR . 'db/selects.php';
-require_once QA_INCLUDE_DIR . 'app/format.php';
-require_once QA_INCLUDE_DIR . 'app/q-list.php';
-$categoryslugs = qa_request_parts(2);
-$countslugs = count($categoryslugs);
-
-$sort = ($countslugs && !QA_ALLOW_UNINDEXED_QUERIES) ? null : qa_get('sort');
-$start = qa_get_start();
-$userid = qa_get_logged_in_userid();
-$listid = qa_get('listid');
-if($listid == NULL) $listid = 0;
-// Get list of questions, plus category information
-
-switch ($sort) {
-        case 'hot':
-                $selectsort = 'hotness';
-                break;
-
-        case 'votes':
-                $selectsort = 'netvotes';
-                break;
-
-        case 'answers':
-                $selectsort = 'acount';
-                break;
-
-        case 'views':
-                $selectsort = 'views';
-                break;
-
-        default:
-                $selectsort = 'created';
-                break;
-}
-$selectspec =  qa_db_qs_mod_selectspec($userid, $selectsort, $start, $categoryslugs, null, false, false, qa_opt_if_loaded('page_size_qs'), $listid);
-$query = "select questionids from ^userlists where userid = # and listid = #";
-$result = qa_db_query_sub($query, $userid, $listid);
-$tcount = qa_db_read_one_value($result, true);
-if(!$tcount) $tcount = 0;
-else $tcount = count(explode(",", $tcount));
-//$selectspec['source'] .= "JOIN (select postid from ^posts where postid in (1,2,3,4,5))aby on aby.postid=^posts.postid";
-list($questions, $categories, $categoryid) = qa_db_select_with_pending(
-        $selectspec,
-        qa_db_category_nav_selectspec($categoryslugs, false, false, true),
-        $countslugs ? qa_db_slugs_to_category_id_selectspec($categoryslugs) : null
-);
-
-if ($countslugs) {
-        if (!isset($categoryid)) {
-                return include QA_INCLUDE_DIR . 'qa-page-not-found.php';
-        }
-
-        $categorytitlehtml = qa_html($categories[$categoryid]['title']);
-        $nonetitle = qa_lang_html_sub('main/no_questions_in_x', $categorytitlehtml);
-
-} else {
-        $nonetitle = qa_lang_html('main/no_questions_found');
+if (!defined('QA_VERSION')) {
+    header('Location: ../../');
+    exit;
 }
 
-
-$categorypathprefix = QA_ALLOW_UNINDEXED_QUERIES ? 'questions/' : null; // this default is applied if sorted not by recent
-$feedpathprefix = null;
-$linkparams = array('listid' => $listid, 'sort' => $sort);
-switch ($sort) {
-        case 'hot':
-                $sometitle = $countslugs ? qa_lang_html_sub('main/hot_qs_in_x', $categorytitlehtml) : qa_lang_html('main/hot_qs_title');
-                $feedpathprefix = qa_opt('feed_for_hot') ? 'hot' : null;
-                break;
-
-        case 'votes':
-                $sometitle = $countslugs ? qa_lang_html_sub('main/voted_qs_in_x', $categorytitlehtml) : qa_lang_html('main/voted_qs_title');
-                break;
-
-        case 'answers':
-                $sometitle = $countslugs ? qa_lang_html_sub('main/answered_qs_in_x', $categorytitlehtml) : qa_lang_html('main/answered_qs_title');
-                break;
-
-        case 'views':
-                $sometitle = $countslugs ? qa_lang_html_sub('main/viewed_qs_in_x', $categorytitlehtml) : qa_lang_html('main/viewed_qs_title');
-                break;
-
-        default:
-                $linkparams = array('listid'=> $listid);
-//$handle = qa_get_logged_in_handle();
-$handle = qa_request_parts(1);
-$handle=$handle[0];
-                $sometitle = $countslugs ? qa_lang_html_sub('main/recent_qs_in_x', $categorytitlehtml) : qa_lang_html('main/recent_qs_title');
-                $categorypathprefix = "userlists/$handle/";
-                $feedpathprefix = qa_opt('feed_for_questions') ? 'questions' : null;
-                break;
-}
-// Prepare and return content for theme
-
-$qa_content = qa_q_list_page_content(
-        $questions, // questions
-        qa_opt('page_size_qs'), // questions per page
-        $start, // start offset
-        $tcount,//countslugs ? $categories[$categoryid]['qcount'] : qa_opt('cache_qcount'), // total count
-        $sometitle, // title if some questions
-        $nonetitle, // title if no questions
-        $categories, // categories for navigation
-        $categoryid, // selected category id
-        false, // show question counts in category navigation
-        $categorypathprefix, // prefix for links in category navigation
-        $feedpathprefix, // prefix for RSS feed paths
-        $countslugs ? qa_html_suggest_qs_tags(qa_using_tags()) : qa_html_suggest_ask($categoryid), // suggest what to do next
-        $linkparams, // extra parameters for page links
-        $linkparams // category nav params
-);
-
-if (QA_ALLOW_UNINDEXED_QUERIES || !$countslugs) {
-        $qa_content['navigation']['sub'] = qa_qs_lists_sub_navigation($sort, $categoryslugs);
-}
-
-
-return $qa_content;
-
-
-function qa_qs_lists_sub_navigation($sort, $categoryslugs)
+class qa_lists_page
 {
-        $request = 'userlists/'.qa_get_logged_in_handle();
+    private $userid;
+    private $handle;
+	private $listid;
+    
+	public function suggest_requests()
+	{
+		$guest_handle = qa_get_logged_in_handle();
 
-        if (isset($categoryslugs)) {
-                foreach ($categoryslugs as $slug) {
-                        $request .= '/' . $slug;
-                }
-        }
+		return [
+			[
+				'title' => qa_lang_html('lists_lang/All_notes'),
+				'request' => 'userlists/' . $guest_handle . '/',
+				'nav' => 'M',
+			],
+		];
+	}
 
-        $navigation = array(
-                'recent' => array(
-                        'label' => qa_lang('main/nav_most_recent'),
-                        'url' => qa_path_html($request),
-                ),
+	public function match_request($request)
+	{
+		$requestparts = qa_request_parts();
 
-                'hot' => array(
-                        'label' => qa_lang('main/nav_hot'),
-                        'url' => qa_path_html($request, array('sort' => 'hot')),
-                ),
+		// Basic checks
+		if ($requestparts[0] !== 'userlists') {
+			return false;
+		}
 
-                'votes' => array(
-                        'label' => qa_lang('main/nav_most_votes'),
-                        'url' => qa_path_html($request, array('sort' => 'votes')),
-                ),
+		$guest_handle = qa_get_logged_in_handle();
+		$this->listid = isset($requestparts[2]) ? (int)$requestparts[2] : 0;
 
-                'answers' => array(
-                        'label' => qa_lang('main/nav_most_answers'),
-                        'url' => qa_path_html($request, array('sort' => 'answers')),
-                ),
+		// Not logged in → handled later via redirect
+		if (!$guest_handle) {
+			$this->userid = null;
+			$this->handle = null;
+			return true; // still return true, so process_request() can redirect
+		}
 
-                'views' => array(
-                        'label' => qa_lang('main/nav_most_views'),
-                        'url' => qa_path_html($request, array('sort' => 'views')),
-                ),
-        );
+		// Determine target user handle
+		$target_handle = isset($requestparts[1]) ? $requestparts[1] : $guest_handle;
+		$target_userid = qa_handle_to_userid($target_handle);
 
-        if (isset($navigation[$sort])) {
-                $navigation[$sort]['selected'] = true;
-        } else {
-                $navigation['recent']['selected'] = true;
-        }
+		if (!$target_userid) {
+			// Non-existent user → handled by process_request
+			$this->userid = null;
+			$this->handle = $target_handle;
+			return true;
+		}
 
-        if (!qa_opt('do_count_q_views')) {
-                unset($navigation['views']);
-        }
+		$this->userid = $target_userid;
+		$this->handle = $target_handle;
 
-        return $navigation;
-}
+		return true;
+	}
 
 
-function qa_db_qs_mod_selectspec($voteuserid, $sort, $start, $categoryslugs = null, $createip = null, $specialtype = false, $full = false, $count = null, $listid = 1)
-{
-        if ($specialtype == 'Q' || $specialtype == 'Q_QUEUED') {
-                $type = $specialtype;
-        } else {
-                $type = $specialtype ? 'Q_HIDDEN' : 'Q'; // for backwards compatibility
-        }
+	public function process_request($request)
+	{
+		$guest_userid = qa_get_logged_in_userid();
+		$guest_handle = qa_get_logged_in_handle();
+		$requestparts = qa_request_parts();
 
-        $count = isset($count) ? min($count, QA_DB_RETRIEVE_QS_AS) : QA_DB_RETRIEVE_QS_AS;
+		// User not logged in
+		if (!$guest_userid) {
+			qa_redirect('login', ['to' => qa_path(qa_request())]);
+		}
 
-        switch ($sort) {
-                case 'acount':
-                case 'flagcount':
-                case 'netvotes':
-                case 'views':
-                        $sortsql = 'ORDER BY ^posts.' . $sort . ' DESC, ^posts.created DESC';
-                        break;
+		// Invalid or non-existent handle
+		if (!$this->userid) {
+			$qa_content = qa_content_prepare();
+			$qa_content['error'] = 'No such user exists.';
+			return $qa_content;
+		}
 
-                case 'created':
-                case 'hotness':
-                        $sortsql = 'ORDER BY ^posts.' . $sort . ' DESC';
-                        break;
+		$isMy = ($this->handle === $guest_handle);
+		$isAuthorized = qa_get_logged_in_level() >= QA_USER_LEVEL_ADMIN;
 
-                default:
-                        qa_fatal_error('qa_db_qs_selectspec() called with illegal sort value');
-                        break;
-        }
+		// Check public access if viewing someone else's list
+		if (!$isMy && !$isAuthorized) {
+			$public = qa_db_read_one_value(
+				qa_db_query_sub(
+					'SELECT public FROM ^userlists WHERE userid=# AND listid=#',
+					$this->userid,
+					$this->listid
+				),
+				true
+			);
 
-        $selectspec = qa_db_posts_basic_selectspec($voteuserid, $full);
+			if ((int)$public !== 1) {
+				$qa_content = qa_content_prepare();
+				$qa_content['error'] = 'Accessing private list of another user is not allowed.';
+				return $qa_content;
+			}
+		}
+		$userid=$this->userid;
+		// Load helpers
+		require_once QA_INCLUDE_DIR . 'db/selects.php';
+		require_once QA_INCLUDE_DIR . 'app/format.php';
+		require_once QA_INCLUDE_DIR . 'app/q-list.php';
+
+		// Pagination and sorting
+		$categoryslugs = qa_request_parts(3);
+		$countslugs = count($categoryslugs);
+		$sort = ($countslugs && !QA_ALLOW_UNINDEXED_QUERIES) ? null : qa_get('sort');
+		$start = qa_get_start();		
+		$listid = $this->listid;
+		
+		// Determine sort
+		$selectsort = match($sort) {
+			'hot' => 'hotness',
+			'votes' => 'netvotes',
+			'answers' => 'acount',
+			'views' => 'views',
+			default => 'created',
+		};
+
+		// Build selectspec for user's notes
+		$selectspec = $this->qa_db_qs_mod_selectspec(
+			$userid, $selectsort, $start, $categoryslugs, null, false, false, qa_opt_if_loaded('page_size_qs'), $listid
+		);
+
+		// Build selectspec for categories based on user's notes
+		$selectspec2 = $this->qa_db_category_nav_with_userlists_selectspec($categoryslugs, $userid,$listid);
+
+		// Fetch questions with categories
+		list($questions, $categories, $categoryid) = qa_db_select_with_pending(
+			$selectspec,
+			$selectspec2,
+			$countslugs ? qa_db_slugs_to_category_id_selectspec($categoryslugs) : null
+		);
+
+		if (isset($categories[$categoryid])) {
+			$total_questions = $categories[$categoryid]['questions_count'];
+		} else {
+			$total_questions = array_sum(array_column($categories, 'questions_count'));
+		}
+
+
+		// Fetch list name for current listid
+		$listname = qa_db_read_one_value(
+			qa_db_query_sub(
+				'SELECT listname FROM ^userlists WHERE userid=# AND listid=#',
+				$userid, $listid
+			),
+			true
+		);
+
+		// If not found in DB, fallback to qa_opt (default list definitions)
+		if (!$listname) {
+			$listname = qa_opt('qa-lists-id-name' . $listid);
+		}
+		$page_title = strtr(qa_lang_html('lists_lang/lists_title_with_list'), array(
+					'^1' => qa_html($listname),
+					'^2' => qa_html($this->handle),
+				));
+		// If browsing inside a category, adjust title
+		if ($categoryid && isset($categories[$categoryid])) {
+			$page_title = strtr(
+				qa_lang_html('lists_lang/lists_title_with_list_category'),
+				array(
+					'^1' => qa_html($categories[$categoryid]['title']), // category
+					'^2' => qa_html($listname),                        // list name
+					'^3' => qa_html($this->handle),                    // user handle
+				)
+			);
+		}
+		$nonetitle = qa_lang_html_sub('main/no_questions_in_x',$page_title);
+
+		$params = ['listid' => $listid, 'sort' => $sort];
+				
+		// Build basic question list content
+		$qa_content = qa_q_list_page_content(
+			$questions,
+			qa_opt('page_size_qs'),
+			$start,
+			$total_questions,
+			$page_title,
+			$nonetitle,
+			$categories,
+			$categoryid ?? null,
+			false,
+			'userlists/'.$this->handle.'/'.$this->listid.'/', // category prefix
+			null,
+			null,
+			$params,
+			$params
+		);
+		return $qa_content;
+	}
+
+	private function qa_db_qs_mod_selectspec($voteuserid, $sort, $start, $categoryslugs = null, $createip = null, $specialtype = false, $full = false, $count = null, $listid=1)
+	{
+		if ($specialtype == 'Q' || $specialtype == 'Q_QUEUED') {
+			$type = $specialtype;
+		} else {
+			$type = $specialtype ? 'Q_HIDDEN' : 'Q';
+		}
+
+		$count = isset($count) ? min($count, QA_DB_RETRIEVE_QS_AS) : QA_DB_RETRIEVE_QS_AS;
+
+		switch ($sort) {
+			case 'acount':
+			case 'flagcount':
+			case 'netvotes':
+			case 'views':
+				$sortsql = 'ORDER BY ^posts.' . $sort . ' DESC, ^posts.created DESC';
+				break;
+
+			case 'created':
+			case 'hotness':
+				$sortsql = 'ORDER BY ^posts.' . $sort . ' DESC';
+				break;
+
+			default:
+				qa_fatal_error('qa_db_qs_selectspec() called with illegal sort value');
+				break;
+		}
+
+		$selectspec = qa_db_posts_basic_selectspec($voteuserid, $full);
+		// Get the user's postids from ^userreads and convert into CSV string
 		$query = "select questionids from ^userlists where userid=# and listid = #";
-        $result = qa_db_query_sub($query, $voteuserid, $listid);
+		$result = qa_db_query_sub($query, $voteuserid,$listid);
 		$questions = qa_db_read_one_value($result, true);
 		if(!$questions) $questions = "''";
-		$selectspec['source'] .= " JOIN (select postid from ^posts where postid in ($questions))aby on aby.postid=^posts.postid";
-        $selectspec['source'] .=
-                " JOIN (SELECT postid FROM ^posts WHERE " .
-                qa_db_categoryslugs_sql_args($categoryslugs, $selectspec['arguments']) .
-                (isset($createip) ? "createip=UNHEX($) AND " : "") .
-        //      "type=$ " . $sortsql . " LIMIT #,#) y ON ^posts.postid=y.postid";//arjun
-"type=$ ) y ON ^posts.postid=y.postid ".$sortsql." LIMIT #,#";
-        if (isset($createip)) {
-                $selectspec['arguments'][] = bin2hex(@inet_pton($createip));
-        }
 
-        array_push($selectspec['arguments'], $type, $start, $count);
+		// Append a JOIN that restricts posts to those in the user's reads
+		$selectspec['source'] .= " JOIN (SELECT postid FROM ^posts WHERE postid IN ($questions)) aby ON aby.postid=^posts.postid";
 
-        $selectspec['sortdesc'] = $sort;
+		// Append the category slug filter + ordering + limit (keeps same structure as original)
+		$selectspec['source'] .=
+			" JOIN (SELECT postid FROM ^posts WHERE " .
+			qa_db_categoryslugs_sql_args($categoryslugs, $selectspec['arguments']) .
+			(isset($createip) ? "createip=UNHEX($) AND " : "") .
+			"type=$ ) y ON ^posts.postid=y.postid " . $sortsql . " LIMIT #,#";
 
-        return $selectspec;
+		if (isset($createip)) {
+			$selectspec['arguments'][] = bin2hex(@inet_pton($createip));
+		}
+
+		array_push($selectspec['arguments'], $type, $start, $count);
+		$selectspec['sortdesc'] = $sort;
+
+		return $selectspec;
+	}
+	
+	
+	private function qa_db_category_nav_with_userlists_selectspec($categoryslugs, $userid, $listid, $full = true)
+	{
+		$selectspec = qa_db_category_nav_selectspec($categoryslugs, false, false, $full);
+
+		// Add custom column for number of questions belonging to user's lists
+		$selectspec['columns']['questions_count'] = 'COUNT(DISTINCT IF(FIND_IN_SET(^posts.postid, ^userlists.questionids), ^posts.postid, NULL))';
+
+		// Replace GROUP BY with JOIN to qa_userlists
+		$selectspec['source'] = str_replace(
+			'GROUP BY ^categories.categoryid',
+			'left JOIN ^posts 
+				 ON ^posts.categoryid = ^categories.categoryid
+				AND ^posts.type = \'Q\'
+			 left JOIN ^userlists 
+				 ON ^userlists.userid = ' . (int) $userid . '
+				AND ^userlists.listid = ' . (int)$listid . '
+				AND FIND_IN_SET(^posts.postid, ^userlists.questionids) > 0
+			 GROUP BY ^categories.categoryid',
+			$selectspec['source']
+		);
+
+		return $selectspec;
+	}
+
 }
-

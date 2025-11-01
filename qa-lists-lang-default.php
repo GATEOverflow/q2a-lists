@@ -1,24 +1,9 @@
 <?php
-/*
-	Question2Answer by Gideon Greenspan and contributors
-	http://www.question2answer.org/
 
-	File: qa-plugin/example-page/qa-example-lang-default.php
-	Description: US English language phrases for example plugin
-
-
-	This program is free software; you can redistribute it and/or
-	modify it under the terms of the GNU General Public License
-	as published by the Free Software Foundation; either version 2
-	of the License, or (at your option) any later version.
-
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
-
-	More about this license: http://www.question2answer.org/license.php
-*/
+if (!defined('QA_VERSION')) { // don't allow this page to be requested directly from browser
+	header('Location: ../../');
+	exit;
+}
 
 return array(
 	'lists' => 'Lists',
@@ -27,5 +12,10 @@ return array(
 	'featured_qs_in_x' => 'Featured Questions in ^',
 	'featured_qs_title' => 'Featured Questions',
 	'nofeatured_qs_in_x' => 'No Featured Questions in ^',
-	'nofeatured_qs_title' => 'No Featured Questions'
+	'nofeatured_qs_title' => 'No Featured Questions',
+	'lists_title_with_list' => '^1 list of ^2',
+	'lists_title_with_list_category' => "^3's ^2 list – ^1 questions",
+
+
+
 );
