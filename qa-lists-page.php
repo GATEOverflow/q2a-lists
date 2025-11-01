@@ -32,9 +32,12 @@
         {
             $requestparts = qa_request_parts();
 
-            return ( !empty( $requestparts )
+            /*return ( !empty( $requestparts )
                 && @$requestparts[ 0 ] === 'userlists'
                 && !empty( $requestparts[ 1 ] )
+            );*/
+            return ( !empty( $requestparts )
+                && @$requestparts[ 0 ] === 'userlists'
             );
         }
 
@@ -45,7 +48,7 @@
 
             if ( !strlen( $handle ) ) {
                 $handle = qa_get_logged_in_handle();
-                qa_redirect( isset( $handle ) ? 'user/' . $handle : 'users' );
+                qa_redirect( $handle ? 'userlists/' . $handle : 'users' );
             }
 
             if ( QA_FINAL_EXTERNAL_USERS ) {
