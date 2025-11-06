@@ -64,60 +64,70 @@ class qa_html_theme_layer extends qa_html_theme_base {
 	{
 		$request = qa_request_part(0);
 
-		if ($request === 'userlists' && qa_is_logged_in()) {
+		if ($request === 'userlists'){
+			if(qa_is_logged_in()) {
 
-			$userid = qa_get_logged_in_userid();
-
-			// Restricted (non-editable) list IDs
-			$restricted_lists = [0, 4, 6];
-
-			// Handle rename submission (from inline JS POST)
-			if (qa_post_text('rename_listid') !== null) {
-				$listid = (int) qa_post_text('rename_listid');
-				$newname = trim(qa_post_text('new_listname'));
-
-				if ($newname !== '' && !in_array($listid, $restricted_lists)) {
-					qa_db_query_sub(
-						'UPDATE ^userlists SET listname=$ WHERE userid=# AND listid=#',
-						$newname, $userid, $listid
-					);
-				}
-			}
-			// Handle AJAX request for toggling public/private
-			if (qa_post_text('toggle_public_listid') !== null) {
-				$listid = (int) qa_post_text('toggle_public_listid');
 				$userid = qa_get_logged_in_userid();
 
-				// Read current visibility
-				$public = qa_db_read_one_value(
-					qa_db_query_sub(
-						'SELECT public FROM ^userlists WHERE userid=# AND listid=#',
-						$userid, $listid
-					),
-					true
-				);
+				// Restricted (non-editable) list IDs
+				$restricted_lists = [0, 4, 6];
 
-				if ($public === null) {
-					echo json_encode(['error' => 'List not found']);
+				// Handle rename submission (from inline JS POST)
+				if (qa_post_text('rename_listid') !== null) {
+					$listid = (int) qa_post_text('rename_listid');
+					$newname = trim(qa_post_text('new_listname'));
+
+					if ($newname !== '' && !in_array($listid, $restricted_lists)) {
+						qa_db_query_sub(
+							'UPDATE ^userlists SET listname=$ WHERE userid=# AND listid=#',
+							$newname, $userid, $listid
+						);
+					}
+				}
+				// Handle AJAX request for toggling public/private
+				if (qa_post_text('toggle_public_listid') !== null) {
+					$listid = (int) qa_post_text('toggle_public_listid');
+					$userid = qa_get_logged_in_userid();
+
+					// Read current visibility
+					$public = qa_db_read_one_value(
+						qa_db_query_sub(
+							'SELECT public FROM ^userlists WHERE userid=# AND listid=#',
+							$userid, $listid
+						),
+						true
+					);
+
+					if ($public === null) {
+						echo json_encode(['error' => 'List not found']);
+						qa_exit();
+					}
+
+					// Toggle (if 1 → 0, if 0 → 1)
+					$new_public = ((int)$public === 1) ? 0 : 1;
+
+					// Update DB
+					qa_db_query_sub(
+						'UPDATE ^userlists SET public=# WHERE userid=# AND listid=#',
+						$new_public, $userid, $listid
+					);
+
+					echo json_encode([
+						'success' => true,
+						'listid' => $listid,
+						'new_public' => $new_public
+					]);
 					qa_exit();
 				}
-
-				// Toggle (if 1 → 0, if 0 → 1)
-				$new_public = ((int)$public === 1) ? 0 : 1;
-
-				// Update DB
-				qa_db_query_sub(
-					'UPDATE ^userlists SET public=# WHERE userid=# AND listid=#',
-					$new_public, $userid, $listid
-				);
-
-				echo json_encode([
-					'success' => true,
-					'listid' => $listid,
-					'new_public' => $new_public
-				]);
-				qa_exit();
 			}
+
+			// Build sub-navigation
+			$query = $_GET;
+			$selected = qa_request_part(2) ?: 0;
+
+			// Determine which handle to use
+			$handle = qa_request_part(1) ?: qa_get_logged_in_handle();
+			$userid = qa_handle_to_userid($handle);
 
 			// Fetch user's lists
 			$lists = qa_db_read_all_assoc(qa_db_query_sub(
@@ -264,7 +274,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 	public function body_suffix(){
 		qa_html_theme_base::body_suffix();
 
-		if (qa_request_part(0) === 'userlists') {
+		if (qa_request_part(0) === 'userlists' && qa_is_logged_in() && qa_request_part(1) ===qa_get_logged_in_handle()) {
 			$postUrl = qa_self_html();
 			$userid = qa_get_logged_in_userid();
 			$selected_list = (int) qa_request_part(2);
@@ -426,7 +436,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 				if (!link.length) return;
 
 				const listid = getListIdFromHref(link.attr("href"));
-				if (!listid) return;
+				if (listid === null || listid === undefined || isNaN(listid)) return;
 
 				const isPublic = icon.data("public") || 0;
 				const msg = isPublic ? "Make this list private?" : "Make this list public?";

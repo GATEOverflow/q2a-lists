@@ -35,13 +35,6 @@ class qa_lists_page
 		$guest_handle = qa_get_logged_in_handle();
 		$this->listid = isset($requestparts[2]) ? (int)$requestparts[2] : 0;
 
-		// Not logged in → handled later via redirect
-		if (!$guest_handle) {
-			$this->userid = null;
-			$this->handle = null;
-			return true; // still return true, so process_request() can redirect
-		}
-
 		// Determine target user handle
 		$target_handle = isset($requestparts[1]) ? $requestparts[1] : $guest_handle;
 		$target_userid = qa_handle_to_userid($target_handle);
@@ -65,11 +58,6 @@ class qa_lists_page
 		$guest_userid = qa_get_logged_in_userid();
 		$guest_handle = qa_get_logged_in_handle();
 		$requestparts = qa_request_parts();
-
-		// User not logged in
-		if (!$guest_userid) {
-			qa_redirect('login', ['to' => qa_path(qa_request())]);
-		}
 
 		// Invalid or non-existent handle
 		if (!$this->userid) {

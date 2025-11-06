@@ -8,6 +8,7 @@ if (!defined('QA_VERSION')) { // don't allow this page to be requested directly 
 
 qa_register_plugin_module('module', 'qa-lists-admin.php', 'qa_lists_admin', 'Question Lists');
 qa_register_plugin_module('page', 'qa-lists.php', 'qa_lists_page', 'Question Lists Page');
+qa_register_plugin_module('page', 'qa-lists-usage.php', 'qa_lists_usage', 'Question Lists usage Page');
 qa_register_plugin_module('page', 'qa-lists-ajax-page.php', 'qa_lists_ajax_page', 'Question Lists AJAX Page');
 qa_register_plugin_layer('qa-lists-layer.php', 'Question Lists Layer');
 qa_register_plugin_overrides('qa-lists-overrides.php', 'Question Lists Override');
