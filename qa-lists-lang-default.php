@@ -17,6 +17,7 @@ return array(
 	'lists_title_with_list_category' => "^3's ^2 list – ^1 questions",
 	'lists_usage_title' => 'Lists Usage Dashboard',
 	'lists_usage_active_date' => 'User last active within',
+	'save' => 'Update the lists',
 
 
 );

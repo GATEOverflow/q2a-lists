@@ -45,6 +45,7 @@ class qa_lists_ajax_page
 			$questionid = (int)$newdata['questionid'];
 			$addlistids = $newdata['addList'];
 			$removelistids = $newdata['removeList'];
+			$removeAll    = !empty($newdata['removeAll']);
 
 			$ajaxreturn = '';
 			if(empty($questionid))
@@ -54,7 +55,17 @@ class qa_lists_ajax_page
 				return;
 			}
 
-			$userid = qa_get_logged_in_userid();		
+			$userid = qa_get_logged_in_userid();
+			
+			if ($removeAll) {
+				// Fetch all list IDs this question belongs to for this user
+				$result = qa_db_query_sub(
+					"SELECT listid FROM ^userlists WHERE userid=# AND FIND_IN_SET(#, questionids)",
+					$userid, $questionid
+				);
+				$rows = qa_db_read_all_assoc($result);
+				$removelistids = array_column($rows, 'listid');
+			}
 
 			// *** should probably pass and check
 			// qa_page_q_click_check_form_code($question, $error)
@@ -64,6 +75,19 @@ class qa_lists_ajax_page
 
 
 			qa_lists_savelist($userid,$questionid,$addlistids,$removelistids);
+
+			// If list 0 was removed, also unfavorite the question natively
+			if (in_array(0, array_map('intval', $removelistids))) {
+				qa_db_query_sub(
+					"DELETE FROM ^userfavorites WHERE userid=# AND entitytype=$ AND entityid=#",
+					$userid, 'Q', $questionid
+				);
+			
+				// Fire the same event Q2A fires natively on unfavorite
+				qa_report_event('q_unfavorite', $userid, qa_get_logged_in_handle(), qa_cookie_get(), [
+					'postid' => $questionid,
+				]);
+			}
 
 			if($error)
 			{

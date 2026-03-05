@@ -34,6 +34,12 @@ It also provides admin-level control over how many lists users can have, which o
 - **Automatic favorite syncing:**  
   If a question is added to the **Favorite list**, it is automatically marked as a site “Favorite” for that user.
 
+- **Remove from current list:**  
+  On the userlists page, each question has a **Remove** button that removes it from the currently viewed list only.
+
+- **Remove from All lists:**  
+  Each question also has a **Remove from All** button that removes it from every list it belongs to at once. If the question was in the Favorite list, it is also automatically unfavorited.
+
 - **Rename and visibility control:**  
   Users can **rename** their lists (if permitted by admin) and **toggle public/private** visibility for each list.
 

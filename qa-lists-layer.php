@@ -1,7 +1,7 @@
 <?php
 
 class qa_html_theme_layer extends qa_html_theme_base {
-
+	private $version = '1.2';
 
 	function head_script()
 	{
@@ -29,14 +29,26 @@ class qa_html_theme_layer extends qa_html_theme_base {
 			$this->output('
 <script>
 					var listsAjaxURL = "'.qa_path('ajaxlists').'";
-					var listsAjaxURL = "'.qa_path('ajaxlists').'";
 					var listsQuestionid = '.$this->content['q_view']['raw']['postid'].';
 					</script>
 					');
 
 			$this->output('
-					<script type="text/javascript" src="'.QA_HTML_THEME_LAYER_URLTOROOT.'script.js?v=0.00195"></script>
-					<link rel="stylesheet" type="text/css" href="'.QA_HTML_THEME_LAYER_URLTOROOT.'styles.css?v=0.0002">
+					<script type="text/javascript" src="'.QA_HTML_THEME_LAYER_URLTOROOT.'script.js?v='.$this->version.'"></script>
+					<link rel="stylesheet" type="text/css" href="'.QA_HTML_THEME_LAYER_URLTOROOT.'styles.css?v='.$this->version.'">
+					');
+		}
+		else if (qa_request_part(0) === 'userlists')
+		{
+			$this->output('
+<script>
+					var listsAjaxURL = "'.qa_path('ajaxlists').'";
+					</script>
+					');
+
+			$this->output('
+					<script type="text/javascript" src="'.QA_HTML_THEME_LAYER_URLTOROOT.'remove-question-script.js?v='.$this->version.'"></script>
+					<link rel="stylesheet" type="text/css" href="'.QA_HTML_THEME_LAYER_URLTOROOT.'styles.css?v='.$this->version.'">
 					');
 		}
 		}
@@ -216,7 +228,37 @@ class qa_html_theme_layer extends qa_html_theme_base {
 
 			qa_html_theme_base::header();
 	}
-
+	public function q_item_buttons($q_item)
+	{
+		parent::q_item_buttons($q_item);
+	
+		// Only show on userlists page
+		if (qa_request_part(0) === 'userlists') {
+	
+			$questionid = $q_item['raw']['postid'];
+			$listid = (int) qa_request_part(2);
+	
+			// Only allow owner or admin to remove
+			$handle = qa_request_part(1);
+			$logged_handle = qa_get_logged_in_handle();
+			$isAdmin = qa_get_logged_in_level() >= QA_USER_LEVEL_ADMIN;
+	
+			if ($handle === $logged_handle || $isAdmin) {
+	
+				$this->output(
+					'<button type="button" id="qa-list-remove-btn-' . $questionid . '" class="qa-list-remove-btn"
+						data-questionid="' . $questionid . '"
+						data-listid="' . $listid . '">
+						Remove
+					</button>
+					<button type="button" id="qa-list-remove-all-btn-' . $questionid . '" class="qa-list-remove-all-btn"
+						data-questionid="' . $questionid . '">
+						Remove from All Lists
+					</button>'
+				);
+			}
+		}
+	}
 	public function q_view_buttons($q_view)
 	{
 		if($this -> template == 'question')
@@ -252,14 +294,14 @@ class qa_html_theme_layer extends qa_html_theme_base {
 				$checked = in_array((string)$i, $lists) ? ' checked' : '';
 				$this->output('
 					<label>
-						<input type="checkbox" name="qa-lists-check" value="' . $i . '"' . $checked . '>
+						<input type="checkbox" id="qa-lists-check-' . $i . '" name="qa-lists-check" value="' . $i . '"' . $checked . '>
 						<span>' . qa_lists_id_to_name($i, $userid) . '</span>
 					</label>'
 				);
 			}
 
 			$this->output('
-				<input type="button" class="qa-gray-button qa-go-list-send-button" value="' . qa_lang('q2apro_flagreasons_lang/send') . '">
+				<input type="button" class="qa-gray-button qa-go-list-send-button" value="' . qa_lang('lists_lang/save') . '">
 				<div class="closer">×</div>
 				</div>
 				</div>

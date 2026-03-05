@@ -1,8 +1,8 @@
 {
 	"name": "Question Lists",
 	"description": "Allows admins to create up to 10 customizable question lists per user, along with a fixed 'Favorite' list.",
-	"version": "2.0",
-	"date": "2025-11-01",
+	"version": "2.1",
+	"date": "2026-03-01",
 	"uri": "",
 	"update_uri": "",
 	"author": "Arjun Suresh,Shaik Masthan",
