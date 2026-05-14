@@ -1,7 +1,7 @@
 <?php
 
 class qa_html_theme_layer extends qa_html_theme_base {
-	private $version = '1.2';
+	private $version = '1.21';
 
 	function head_script()
 	{
