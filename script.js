@@ -1,6 +1,7 @@
 $(document).ready(function()
 {
 	var i=0;
+	var favClickedIntent = null; // tracks whether the last favorite click was "add" or "remove"
 	 // Store the old list IDs before the user changes anything
     let oldListIds = [];
 	
