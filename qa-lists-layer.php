@@ -1,7 +1,7 @@
 <?php
 
 class qa_html_theme_layer extends qa_html_theme_base {
-	private $version = '1.21';
+	private $version = '1.4';
 
 	function head_script()
 	{
@@ -30,6 +30,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 <script>
 					var listsAjaxURL = "'.qa_path('ajaxlists').'";
 					var listsQuestionid = '.$this->content['q_view']['raw']['postid'].';
+					var listsCsrfCode = '.json_encode(qa_get_form_security_code('lists-manage')).';
 					</script>
 					');
 
@@ -43,6 +44,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 			$this->output('
 <script>
 					var listsAjaxURL = "'.qa_path('ajaxlists').'";
+					var listsCsrfCode = '.json_encode(qa_get_form_security_code('lists-manage')).';
 					</script>
 					');
 
@@ -89,7 +91,8 @@ class qa_html_theme_layer extends qa_html_theme_base {
 					$listid = (int) qa_post_text('rename_listid');
 					$newname = trim(qa_post_text('new_listname'));
 
-					if ($newname !== '' && !in_array($listid, $restricted_lists)) {
+					if ($newname !== '' && mb_strlen($newname) <= 40 && !in_array($listid, $restricted_lists)
+						&& qa_check_form_security_code('lists-manage', qa_post_text('code'))) {
 						qa_db_query_sub(
 							'UPDATE ^userlists SET listname=$ WHERE userid=# AND listid=#',
 							$newname, $userid, $listid
@@ -101,8 +104,13 @@ class qa_html_theme_layer extends qa_html_theme_base {
 					$listid = (int) qa_post_text('toggle_public_listid');
 					$userid = qa_get_logged_in_userid();
 
-					// Read current visibility
-					$public = qa_db_read_one_value(
+				if (!qa_check_form_security_code('lists-manage', qa_post_text('code'))) {
+					echo json_encode(['error' => 'Security violation']);
+					qa_exit();
+				}
+
+				// Read current visibility
+				$public = qa_db_read_one_value(
 						qa_db_query_sub(
 							'SELECT public FROM ^userlists WHERE userid=# AND listid=#',
 							$userid, $listid
@@ -179,14 +187,6 @@ class qa_html_theme_layer extends qa_html_theme_base {
 
 			// Replace $lists with merged result
 			$lists = $final_lists;
-
-
-			// Build sub-navigation
-			$query = $_GET;
-			$selected = qa_request_part(2) ?: 0;
-
-			// Determine which handle to use
-			$handle = qa_request_part(1) ?: qa_get_logged_in_handle();
 
 			// Determine current category (if any)
 			$categoryslugs = qa_request_parts(3); // e.g., ['theory-of-computation']
@@ -277,8 +277,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 		if(qa_is_logged_in() && $this->template=="question")
 		{
 			$userid = qa_get_logged_in_userid();
-			$postid = qa_request_parts(0);
-			$postid=$postid[0];
+			$postid = $this->content['q_view']['raw']['postid'];
 			$query = "select listids from ^userquestionlists where userid = # and questionid = #";
 			$result = qa_db_query_sub($query, $userid, $postid);
 			$listids = qa_db_read_one_value($result, true);
@@ -317,7 +316,8 @@ class qa_html_theme_layer extends qa_html_theme_base {
 		qa_html_theme_base::body_suffix();
 
 		if (qa_request_part(0) === 'userlists' && qa_is_logged_in() && qa_request_part(1) ===qa_get_logged_in_handle()) {
-			$postUrl = qa_self_html();
+			// html_entity_decode avoids &amp; being passed as literal text in JS/AJAX URLs
+			$postUrl = html_entity_decode(qa_self_html());
 			$userid = qa_get_logged_in_userid();
 			$selected_list = (int) qa_request_part(2);
 
@@ -345,12 +345,14 @@ class qa_html_theme_layer extends qa_html_theme_base {
 				}
 			}
 			$restricted_json = json_encode(array_fill_keys($restricted_lists, true));
+			$csrf_code = qa_get_form_security_code('lists-manage');
 
 			echo '<script>';
 			?>
 			jQuery(function ($) {
 			  const restricted = <?php echo $restricted_json ?: '{}'; ?>;
 			  const postUrl = <?php echo json_encode($postUrl); ?>;
+			  const listsCsrfCode = <?php echo json_encode($csrf_code); ?>;
 			  const currentId = <?php echo (int) $selected_list; ?>;
 			  const isPublicInitial = <?php echo (int) $public; ?>;
 
@@ -394,10 +396,10 @@ class qa_html_theme_layer extends qa_html_theme_base {
 				  wrapper.append(editIcon);
 				}
 
-				// 👁 / 🔒 Visibility toggle (always shown)
+				// 👁 = public (visible), 🔒 = private (locked)
 				const viewIcon = $("<span/>", {
 				  class: "list-view-icon",
-				  text: isPublicInitial ? "🔒" : "👁",
+				  text: isPublicInitial ? "👁" : "🔒",
 				  title: isPublicInitial
 					? "Public (click to make private)"
 					: "Private (click to make public)",
@@ -456,7 +458,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 					return;
 				  }
 
-				  $.post(postUrl, { rename_listid: listid, new_listname: newname, qa_click: 1 })
+				$.post(postUrl, { rename_listid: listid, new_listname: newname, qa_click: 1, code: listsCsrfCode })
 					.done(() => restore(newname))
 					.fail(() => restore(current));
 				}
@@ -486,7 +488,8 @@ class qa_html_theme_layer extends qa_html_theme_base {
 
 				$.post(postUrl, {
 				  toggle_public_listid: listid, // handled in PHP
-				  qa_click: 1
+				  qa_click: 1,
+				  code: listsCsrfCode
 				}).done(function (resp) {
 				  let data;
 				  try {
@@ -499,7 +502,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 					  ? 0
 					  : 1;
 
-				  icon.text(newState ? "🔒" : "👁");
+				  icon.text(newState ? "👁" : "🔒");
 				  icon.attr(
 					"title",
 					newState

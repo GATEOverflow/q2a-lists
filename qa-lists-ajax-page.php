@@ -42,6 +42,12 @@ class qa_lists_ajax_page
 			$newdata = json_decode($transferString, true);
 			//$newdata = str_replace('&quot;', '"', $newdata); // see stackoverflow.com/questions/3110487/
 
+			// Verify CSRF token (sent as a separate POST field alongside ajaxdata)
+			if (!qa_check_form_security_code('lists-manage', qa_post_text('code'))) {
+				echo json_encode(['error' => 'Security violation']);
+				return;
+			}
+
 			$questionid = (int)$newdata['questionid'];
 			$addlistids = $newdata['addList'];
 			$removelistids = $newdata['removeList'];
@@ -56,6 +62,11 @@ class qa_lists_ajax_page
 			}
 
 			$userid = qa_get_logged_in_userid();
+
+			// Validate list IDs are within the configured range
+			$list_count = (int) qa_opt('qa-lists-count');
+			$addlistids = array_values(array_filter($addlistids, fn($lid) => (int)$lid >= 0 && (int)$lid <= $list_count));
+			$removelistids = array_values(array_filter($removelistids, fn($lid) => (int)$lid >= 0 && (int)$lid <= $list_count));
 			
 			if ($removeAll) {
 				// Fetch all list IDs this question belongs to for this user

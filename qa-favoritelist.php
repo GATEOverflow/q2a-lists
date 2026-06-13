@@ -55,20 +55,22 @@ class my_favorite_event {
 			}
         }
 		if($event === 'q_delete'){
-			$postid = $params['postid'];
+			$postid = (int)$params['postid'];
+			if (!$postid) return;
 
-			// Remove the postid from the comma-separated `questionids` list in qa_userlists
+			// Remove the postid from ^userlists using a fully parameterized atomic UPDATE
 			qa_db_query_sub(
 				"UPDATE ^userlists
-				 SET questionids = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', questionids, ','), ',$postid,', ','))
-				 WHERE questionids LIKE '%,#,%' 
-					OR questionids LIKE '#,%' 
-					OR questionids LIKE '%,#' 
-					OR questionids = '#'",
-				$postid, $postid, $postid, $postid
+				 SET questionids = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', questionids, ','), CONCAT(',', #, ','), ','))
+				 WHERE FIND_IN_SET(#, questionids)",
+				$postid, $postid
 			);
-			
-			//error_log("Removed postid $postid from all user lists due to deletion");
+
+			// Also clean up the corresponding row in ^userquestionlists
+			qa_db_query_sub(
+				"DELETE FROM ^userquestionlists WHERE questionid = #",
+				$postid
+			);
 		}
     }
 	

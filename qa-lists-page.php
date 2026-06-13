@@ -4,7 +4,7 @@
         exit;
     }
 
-    class qa_lists_page
+    class qa_lists_page_legacy
     {
 
         private $directory;

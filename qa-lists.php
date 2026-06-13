@@ -14,6 +14,10 @@ class qa_lists_page
 	{
 		$guest_handle = qa_get_logged_in_handle();
 
+		if (!$guest_handle) {
+			return [];
+		}
+
 		return [
 			[
 				'title' => qa_lang_html('lists_lang/All_notes'),
@@ -61,6 +65,9 @@ class qa_lists_page
 
 		// Invalid or non-existent handle
 		if (!$this->userid) {
+			if (!qa_is_logged_in()) {
+				qa_redirect('login');
+			}
 			$qa_content = qa_content_prepare();
 			$qa_content['error'] = 'No such user exists.';
 			return $qa_content;
@@ -123,10 +130,38 @@ class qa_lists_page
 			$countslugs ? qa_db_slugs_to_category_id_selectspec($categoryslugs) : null
 		);
 
-		if (isset($categories[$categoryid])) {
-			$total_questions = $categories[$categoryid]['questions_count'];
+		if ($countslugs) {
+			// Category selected: count list questions that fall within the selected subtree.
+			// qa_db_categoryslugs_sql_args() produces the same backpath/catidpath condition
+			// that the question query uses, so this always matches what is actually shown.
+			$catcountargs = [];
+			$catcountcond = qa_db_categoryslugs_sql_args($categoryslugs, $catcountargs);
+			$total_questions = (int) qa_db_read_one_value(
+				qa_db_query_sub(
+					"SELECT COUNT(*) FROM ^posts
+					 JOIN ^userlists
+					     ON ^userlists.userid=# AND ^userlists.listid=#
+					     AND FIND_IN_SET(^posts.postid, ^userlists.questionids)
+					 WHERE {$catcountcond}^posts.type='Q'",
+					$userid, $listid, ...$catcountargs
+				),
+				false
+			);
 		} else {
-			$total_questions = array_sum(array_column($categories, 'questions_count'));
+			// No category filter: count ALL questions in the list regardless of category.
+			// Using array_sum() on the nav categories undercounts because it only sums
+			// questions directly in top-level categories, missing all subcategory questions.
+			$total_questions = (int) qa_db_read_one_value(
+				qa_db_query_sub(
+					"SELECT COUNT(*) FROM ^posts
+					 JOIN ^userlists
+					     ON ^userlists.userid=# AND ^userlists.listid=#
+					     AND FIND_IN_SET(^posts.postid, ^userlists.questionids)
+					 WHERE ^posts.type='Q'",
+					$userid, $listid
+				),
+				false
+			);
 		}
 
 
@@ -211,14 +246,22 @@ class qa_lists_page
 		}
 
 		$selectspec = qa_db_posts_basic_selectspec($voteuserid, $full);
-		// Get the user's postids from ^userreads and convert into CSV string
+		// Get the user's postids from ^userlists for this list
 		$query = "select questionids from ^userlists where userid=# and listid = #";
-		$result = qa_db_query_sub($query, $voteuserid,$listid);
-		$questions = qa_db_read_one_value($result, true);
-		if(!$questions) $questions = "''";
+		$result = qa_db_query_sub($query, $voteuserid, $listid);
+		$rawIds = qa_db_read_one_value($result, true);
 
-		// Append a JOIN that restricts posts to those in the user's reads
-		$selectspec['source'] .= " JOIN (SELECT postid FROM ^posts WHERE postid IN ($questions)) aby ON aby.postid=^posts.postid";
+		// Sanitize: allow only comma-separated positive integers before SQL interpolation
+		$safeIds = '0'; // postid 0 never exists; yields empty result set
+		if ($rawIds && trim($rawIds) !== '') {
+			$ids = array_filter(array_map('intval', explode(',', $rawIds)), fn($v) => $v > 0);
+			if (!empty($ids)) {
+				$safeIds = implode(',', $ids);
+			}
+		}
+
+		// Append a JOIN that restricts posts to those in the user's list
+		$selectspec['source'] .= " JOIN (SELECT postid FROM ^posts WHERE postid IN ($safeIds)) aby ON aby.postid=^posts.postid";
 
 		// Append the category slug filter + ordering + limit (keeps same structure as original)
 		$selectspec['source'] .=

@@ -21,7 +21,8 @@ $(document).ready(function()
 					questionid: questionid,
 					addList: [],
 					removeList: [String(listid)]
-				})
+				}),
+				code: listsCsrfCode
 			},
 			dataType: "json",
 			success: function(response) {
@@ -62,7 +63,8 @@ $(document).ready(function()
 					addList: [],
 					removeList: [],
 					removeAll: true
-				})
+				}),
+				code: listsCsrfCode
 			},
 			dataType: "json",
 			success: function(response) {

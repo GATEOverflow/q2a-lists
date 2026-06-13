@@ -49,7 +49,7 @@ $(document).ready(function()
 		$.ajax({
 				type: "POST",
 				url: listsAjaxURL,
-				data: { ajaxdata: senddata },
+				data: { ajaxdata: senddata, code: listsCsrfCode },
 				dataType:"json",
 				cache: false,
 				success: function(data)

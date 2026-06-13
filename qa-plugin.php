@@ -18,7 +18,19 @@ qa_register_plugin_module('event', 'qa-favoritelist.php', 'my_favorite_event', '
 
 function qa_lists_id_to_name($listid, $userid)
 {
-	return qa_opt("qa-lists-id-name".$listid);
+	if ($userid) {
+		$name = qa_db_read_one_value(
+			qa_db_query_sub(
+				"SELECT listname FROM ^userlists WHERE userid=# AND listid=#",
+				$userid, (int)$listid
+			),
+			true
+		);
+		if ($name !== null && $name !== '') {
+			return $name;
+		}
+	}
+	return qa_opt("qa-lists-id-name" . (int)$listid);
 }
 
 function qa_lists_savelist($userid, $postid, $addlistids = [], $removelistids = [])
@@ -27,62 +39,38 @@ function qa_lists_savelist($userid, $postid, $addlistids = [], $removelistids = 
         return false;
     }
 
-    //Handle adding post to lists
+    //Handle adding post to lists — atomic INSERT … ON DUPLICATE KEY to avoid race conditions
     foreach ($addlistids as $listid) {
         $listid = (int) $listid;
-
-        // Fetch existing question IDs for this list
-        $result = qa_db_query_sub(
-            "SELECT questionids FROM ^userlists WHERE userid = # AND listid = #",
-            $userid, $listid
-        );
-        $questionids = qa_db_read_one_value($result, true);
-
-        if ($questionids !== null && trim($questionids) !== '') {
-            $questions = explode(",", trim($questionids));
-            if (!in_array($postid, $questions)) {
-                $questions[] = $postid;
-            }
-        } else {
-            $questions = [$postid];
-        }
-
-        // Save back to userlists
-        $questionsStr = trim(implode(",", array_filter($questions)));
         $listname = qa_lists_id_to_name($listid, $userid);
 
         qa_db_query_sub(
             "INSERT INTO ^userlists (userid, listid, listname, questionids)
-             VALUES (#, #, $, $)
-             ON DUPLICATE KEY UPDATE questionids = $",
-            $userid, $listid, $listname, $questionsStr, $questionsStr
+             VALUES (#, #, $, #)
+             ON DUPLICATE KEY UPDATE
+                 questionids = IF(
+                     FIND_IN_SET(#, questionids),
+                     questionids,
+                     IF(questionids IS NULL OR TRIM(questionids) = '',
+                         #,
+                         CONCAT(questionids, ',', #)
+                     )
+                 )",
+            $userid, $listid, $listname, $postid,
+            $postid, $postid, $postid
         );
     }
 
-    //Handle removing post from lists
+    //Handle removing post from lists — atomic UPDATE via parameterized REPLACE
     foreach ($removelistids as $listid) {
         $listid = (int) $listid;
 
-        // Remove from ^userlists
-        $result = qa_db_query_sub(
-            "SELECT questionids FROM ^userlists WHERE userid = # AND listid = #",
-            $userid, $listid
+        qa_db_query_sub(
+            "UPDATE ^userlists
+             SET questionids = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', questionids, ','), CONCAT(',', #, ','), ','))
+             WHERE userid = # AND listid = # AND FIND_IN_SET(#, questionids)",
+            $postid, $userid, $listid, $postid
         );
-        $questionids = qa_db_read_one_value($result, true);
-
-        if ($questionids !== null && trim($questionids) !== '') {
-            $questions = explode(",", trim($questionids));
-            if (in_array($postid, $questions)) {
-                unset($questions[array_search($postid, $questions)]);
-            }
-
-            $questionsStr = trim(implode(",", array_filter($questions)));
-
-                qa_db_query_sub(
-                    "UPDATE ^userlists SET questionids = $ WHERE userid = # AND listid = #",
-                    $questionsStr, $userid, $listid
-                );
-        }
     }
 	
 	//Update ^userquestionlists with all lists this question now belongs to

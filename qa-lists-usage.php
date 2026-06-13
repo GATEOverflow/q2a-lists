@@ -123,12 +123,14 @@ class qa_lists_usage {
                 if (ranked.length === 0) {
                     html += "<tr><td colspan=\'"+(selectedLists.length+(showTotal?3:2))+"\' style=\'text-align:center;\'>No results</td></tr>";
                 } else {
-                    let rank = 0, prevTotal=null, prevRank=0;
+                    let iterIdx = 0, assignedRank = 0, prevTotal = null;
                     ranked.forEach(u => {
-                        rank++;
-                        if (u.total === prevTotal) u.rank = prevRank;
-                        else u.rank = rank;
-                        prevRank = u.rank; prevTotal = u.total;
+                        iterIdx++;
+                        if (u.total !== prevTotal) {
+                            assignedRank = iterIdx; // skip ranks after a tie group
+                        }
+                        u.rank = assignedRank;
+                        prevTotal = u.total;
 
                         html += "<tr><td>"+u.rank+"</td>";
                         html += "<td><a href=\'index.php?qa=user/"+u.handle+"\'>"+u.handle+"</a></td>";
