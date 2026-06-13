@@ -43,7 +43,7 @@ class qa_lists_ajax_page
 			//$newdata = str_replace('&quot;', '"', $newdata); // see stackoverflow.com/questions/3110487/
 
 			// Verify CSRF token (sent as a separate POST field alongside ajaxdata)
-			if (!qa_check_form_security_code('lists-manage', qa_post_text('code'))) {
+			if (!qa_check_form_security_code(QA_LISTS_CSRF_ACTION, qa_post_text('code'))) {
 				echo json_encode(['error' => 'Security violation']);
 				return;
 			}

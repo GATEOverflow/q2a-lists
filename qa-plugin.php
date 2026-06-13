@@ -6,6 +6,10 @@ if (!defined('QA_VERSION')) { // don't allow this page to be requested directly 
 	exit;   
 }               
 
+if (!defined('QA_LISTS_CSRF_ACTION')) {
+	define('QA_LISTS_CSRF_ACTION', 'lists-manage');
+}
+
 qa_register_plugin_module('module', 'qa-lists-admin.php', 'qa_lists_admin', 'Question Lists');
 qa_register_plugin_module('page', 'qa-lists.php', 'qa_lists_page', 'Question Lists Page');
 qa_register_plugin_module('page', 'qa-lists-usage.php', 'qa_lists_usage', 'Question Lists usage Page');

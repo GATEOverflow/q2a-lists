@@ -60,8 +60,16 @@ $(document).ready(function()
 				}
 				else if(typeof data.success !== "undefined")
 				{
-					//location.reload();
-					$("#qa-lists-popup").hide();
+					oldListIds = newListIds; // keep state in sync for subsequent opens
+					var $wrap = $(".qa-lists-wrap");
+					var $feedback = $("<div class='qa-lists-saved-msg'>Saved \u2713</div>").css({
+						textAlign: "center", color: "#2a7", fontWeight: "bold", padding: "6px 0"
+					});
+					$wrap.append($feedback);
+					setTimeout(function() {
+						$feedback.remove();
+						$("#qa-lists-popup").hide();
+					}, 800);
 				}
 				else
 				{

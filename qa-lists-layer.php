@@ -1,7 +1,7 @@
 <?php
 
 class qa_html_theme_layer extends qa_html_theme_base {
-	private $version = '1.4';
+	private $version = '1.5';
 
 	function head_script()
 	{
@@ -30,7 +30,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 <script>
 					var listsAjaxURL = "'.qa_path('ajaxlists').'";
 					var listsQuestionid = '.$this->content['q_view']['raw']['postid'].';
-					var listsCsrfCode = '.json_encode(qa_get_form_security_code('lists-manage')).';
+					var listsCsrfCode = '.json_encode(qa_get_form_security_code(QA_LISTS_CSRF_ACTION)).';
 					</script>
 					');
 
@@ -44,7 +44,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 			$this->output('
 <script>
 					var listsAjaxURL = "'.qa_path('ajaxlists').'";
-					var listsCsrfCode = '.json_encode(qa_get_form_security_code('lists-manage')).';
+					var listsCsrfCode = '.json_encode(qa_get_form_security_code(QA_LISTS_CSRF_ACTION)).';
 					</script>
 					');
 
@@ -83,8 +83,15 @@ class qa_html_theme_layer extends qa_html_theme_base {
 
 				$userid = qa_get_logged_in_userid();
 
-				// Restricted (non-editable) list IDs
-				$restricted_lists = [0, 4, 6];
+				// Restricted (non-editable) list IDs — built dynamically from admin settings
+				$restricted_lists = [];
+				$_rl_count = (int) qa_opt('qa-lists-count');
+				for ($_i = 0; $_i <= $_rl_count; $_i++) {
+					if ((int) qa_opt('qa-lists-id-editable' . $_i) === 0) {
+						$restricted_lists[] = $_i;
+					}
+				}
+				unset($_rl_count, $_i);
 
 				// Handle rename submission (from inline JS POST)
 				if (qa_post_text('rename_listid') !== null) {
@@ -92,7 +99,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 					$newname = trim(qa_post_text('new_listname'));
 
 					if ($newname !== '' && mb_strlen($newname) <= 40 && !in_array($listid, $restricted_lists)
-						&& qa_check_form_security_code('lists-manage', qa_post_text('code'))) {
+					&& qa_check_form_security_code(QA_LISTS_CSRF_ACTION, qa_post_text('code'))) {
 						qa_db_query_sub(
 							'UPDATE ^userlists SET listname=$ WHERE userid=# AND listid=#',
 							$newname, $userid, $listid
@@ -104,7 +111,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 					$listid = (int) qa_post_text('toggle_public_listid');
 					$userid = qa_get_logged_in_userid();
 
-				if (!qa_check_form_security_code('lists-manage', qa_post_text('code'))) {
+				if (!qa_check_form_security_code(QA_LISTS_CSRF_ACTION, qa_post_text('code'))) {
 					echo json_encode(['error' => 'Security violation']);
 					qa_exit();
 				}
@@ -345,7 +352,7 @@ class qa_html_theme_layer extends qa_html_theme_base {
 				}
 			}
 			$restricted_json = json_encode(array_fill_keys($restricted_lists, true));
-			$csrf_code = qa_get_form_security_code('lists-manage');
+			$csrf_code = qa_get_form_security_code(QA_LISTS_CSRF_ACTION);
 
 			echo '<script>';
 			?>
